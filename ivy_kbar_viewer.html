@@ -403,9 +403,9 @@ async function renderCharts(sym){
 function buildCard(sym,div,zt,bars,gl,beh,isBest,_layer){
   const el=document.createElement('div');el.className='chart-card';
   const dir=beh.zone_direction||'';
-  const ds=dir==='up'?'▲':dir==='down'?'▼':'';
-  const star=isBest?' ★':'';
-  el.innerHTML='<div class="chart-title"><span>'+sym+'  '+div+'等份  <span class="zone-'+(zt==='T'?'t':'s')+'">'+zt+'</span>'+star+'</span><span>'+ds+' '+(beh.current_line||'')+'</span></div><div class="chart-body"><div class="chart-inner"><canvas></canvas></div><div class="price-axis"></div></div>';
+  const star=isBest?' <span style="font-size:18px">★</span>':'';
+  const dirStr=dir?' <span style="font-size:13px;color:#555">'+dir+'</span>':'';
+  el.innerHTML='<div class="chart-title"><span>'+sym+'  '+div+'等份  <span class="zone-'+(zt==='T'?'t':'s')+'">'+zt+'</span>'+star+dirStr+'</span><span>'+(beh.current_line||'')+'</span></div><div class="chart-body"><div class="chart-inner"><canvas></canvas></div><div class="price-axis"></div></div>';
   setTimeout(()=>{
     const canvas=el.querySelector('canvas');
     if(!canvas)return;
