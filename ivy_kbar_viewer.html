@@ -175,12 +175,27 @@ function renderBehBar(sym){
   const bd=(sb._meta||{}).best_div||'16';
   function cell(beh){
     const cl=beh.current_line||'—',nu=beh.next_up||'',nd=beh.next_dn||'';
-    const nuU=beh.next_up_approx_up,nuD=beh.next_up_approx_dn;
-    const ndU=beh.next_dn_approx_up,ndD=beh.next_dn_approx_dn;
+    const nuV=beh.next_up_value,nuU=beh.next_up_approx_up,nuD=beh.next_up_approx_dn;
+    const ndV=beh.next_dn_value,ndU=beh.next_dn_approx_up,ndD=beh.next_dn_approx_dn;
+    // current_line 實際值（approx_up 和 approx_dn 的目標格線 value）
+    // behavior_state 有 current_approx_up / current_approx_dn
+    const caU=beh.current_approx_up,caD=beh.current_approx_dn;
     const le=beh.last_event||'',leb=beh.last_event_bar?beh.last_event_bar.slice(11,16):'';
-    let h='<span class="beh-curr-label">當前</span> <span class="beh-curr-line">'+cl+'</span><br>';
-    if(nu){const p=(nuU!=null&&nuD!=null)?'<span class="beh-price">('+fmt(nuU)+' '+fmt(nuD)+')</span>':'';h+='<span class="beh-up">'+nu+'</span>'+p+'<br>';}
-    if(nd){const p=(ndU!=null&&ndD!=null)?'<span class="beh-price">('+fmt(ndU)+' '+fmt(ndD)+')</span>':'';h+='<span class="beh-dn">'+nd+'</span>'+p+'<br>';}
+    // current_line：顯示格式 "L3 xx.x (approx_up approx_dn)"
+    let clPrice='';
+    if(caU!=null&&caD!=null) clPrice=' <span class="beh-price">('+fmt(caU)+' '+fmt(caD)+')</span>';
+    let h='<span class="beh-curr-label">當前</span> <span class="beh-curr-line">'+cl+'</span>'+clPrice+'<br>';
+    // 目的：name value (approx_up approx_dn)
+    if(nu){
+      const vStr=nuV!=null?' <span class="beh-curr-line" style="font-size:13px">'+fmt(nuV)+'</span>':'';
+      const p=(nuU!=null&&nuD!=null)?'<span class="beh-price">('+fmt(nuU)+' '+fmt(nuD)+')</span>':'';
+      h+='<span class="beh-up">'+nu+'</span>'+vStr+' '+p+'<br>';
+    }
+    if(nd){
+      const vStr=ndV!=null?' <span class="beh-curr-line" style="font-size:13px">'+fmt(ndV)+'</span>':'';
+      const p=(ndU!=null&&ndD!=null)?'<span class="beh-price">('+fmt(ndU)+' '+fmt(ndD)+')</span>':'';
+      h+='<span class="beh-dn">'+nd+'</span>'+vStr+' '+p+'<br>';
+    }
     if(le)h+='<span class="beh-curr-label">上次</span> <span class="beh-last">'+le+'</span>'+(leb?' <span class="beh-price">'+leb+'</span>':'');
     return h;
   }
