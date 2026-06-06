@@ -146,8 +146,29 @@
     display: flex; justify-content: space-between;
     background: #eef2ff;
   }
-  .chart-canvas-wrap { position: relative; height: 340px; background: #fff; }
-  canvas { width: 100% !important; }
+  .chart-canvas-wrap {
+    display: flex; height: 340px; background: #fff;
+  }
+  .chart-canvas-inner {
+    position: relative; flex: 1; min-width: 0;
+  }
+  canvas { width: 100% !important; height: 100% !important; }
+  .price-axis {
+    width: 46px; flex-shrink: 0;
+    display: flex; flex-direction: column; justify-content: space-between;
+    padding: 4px 4px 4px 2px;
+    background: #f8f9fc;
+    border-left: 1px solid #dde;
+    font-size: 11px; color: #333;
+    text-align: right; font-family: monospace;
+    overflow: hidden;
+  }
+  .price-tick { white-space: nowrap; line-height: 1.2; }
+  .price-tick.tick-half   { color: #c62828; font-weight: 700; }
+  .price-tick.tick-third  { color: #444; font-weight: 700; }
+  .price-tick.tick-edge   { color: #1565c0; font-weight: 700; }
+  .price-tick.tick-target-up { color: #e65100; font-weight: 700; background: #fff3e0; border-radius: 2px; padding: 0 2px; }
+  .price-tick.tick-target-dn { color: #1b5e20; font-weight: 700; background: #f1f8e9; border-radius: 2px; padding: 0 2px; }
 
   /* ── 載入動畫 ── */
   #loading {
@@ -647,7 +668,10 @@ function buildChartCard(sym, div, zoneType, bars, gridLines, beh, isBestDiv) {
       <span>${dirSign} ${beh.current_line || ''}</span>
     </div>
     <div class="chart-canvas-wrap">
-      <canvas id="cv-${div}-${zoneType}"></canvas>
+      <div class="chart-canvas-inner">
+        <canvas id="cv-${div}-${zoneType}"></canvas>
+      </div>
+      <div class="price-axis" id="pa-${div}-${zoneType}"></div>
     </div>`;
 
   // 等 DOM 插入後再建 Chart
@@ -656,10 +680,82 @@ function buildChartCard(sym, div, zoneType, bars, gridLines, beh, isBestDiv) {
     if (!canvas) return;
     const chart = buildCandlestickChart(canvas, bars, gridLines, beh);
     chartInstances.push(chart);
+    // 建完後填右側價格軸
+    setTimeout(() => fillPriceAxis(el, chart, gridLines, beh), 80);
   }, 0);
 
   // 回傳假 chart（真正的在 setTimeout 裡建）
   return { el, chart: { destroy: () => {} } };
+}
+
+// 填右側價格軸標籤
+function fillPriceAxis(cardEl, chart, gridLines, beh) {
+  const axisEl = cardEl.querySelector('.price-axis');
+  if (!axisEl || !chart || !chart.scales || !chart.scales.y) return;
+
+  const yScale = chart.scales.y;
+  const minY = yScale.min;
+  const maxY = yScale.max;
+  const range = maxY - minY;
+  if (!range) return;
+
+  // 收集目標線價格
+  const targetUp = beh.next_up_approx_dn;
+  const targetDn = beh.next_dn_approx_up;
+
+  // 過濾在範圍內的格線，只顯示有意義的（主格線 + 特殊線 + 目標線）
+  const ticks = [];
+
+  // 從 gridLines 挑出要顯示的：是 edge/half/third，或在區間內有標籤的
+  const priceRange = Math.max(...gridLines.map(g=>g.price)) - Math.min(...gridLines.map(g=>g.price));
+  const half   = Math.min(...gridLines.map(g=>g.price)) + priceRange / 2;
+  const tol    = priceRange * 0.001;
+
+  gridLines.forEach(g => {
+    if (g.price < minY || g.price > maxY) return;
+    const isHalf  = Math.abs(g.price - half) < tol;
+    const isEdge  = g.width >= 1 && g.dash && g.dash.length === 0 && !isHalf;
+    const hasLbl  = !!g.label;
+    if (isHalf || isEdge || hasLbl) {
+      let cls = 'price-tick';
+      if (isHalf) cls += ' tick-half';
+      else if (isEdge) cls += ' tick-third';
+      ticks.push({ price: g.price, cls });
+    }
+  });
+
+  // 加目標線
+  if (targetUp && targetUp >= minY && targetUp <= maxY) {
+    ticks.push({ price: targetUp, cls: 'price-tick tick-target-up', label: beh.next_up ? beh.next_up : null });
+  }
+  if (targetDn && targetDn >= minY && targetDn <= maxY) {
+    ticks.push({ price: targetDn, cls: 'price-tick tick-target-dn', label: beh.next_dn ? beh.next_dn : null });
+  }
+
+  // 排序（高→低）並去重
+  const seen = new Set();
+  const sorted = ticks
+    .filter(t => { const k = t.price.toFixed(1); if(seen.has(k)) return false; seen.add(k); return true; })
+    .sort((a,b) => b.price - a.price);
+
+  // 用絕對定位方式放置（根據 Y 軸比例計算位置）
+  axisEl.style.position = 'relative';
+  axisEl.innerHTML = '';
+  const axisH = axisEl.offsetHeight || 340;
+
+  sorted.forEach(t => {
+    const pct = (maxY - t.price) / range;
+    const top = pct * axisH;
+    const div = document.createElement('div');
+    div.className = t.cls;
+    div.style.position  = 'absolute';
+    div.style.right     = '3px';
+    div.style.top       = `${top - 7}px`;
+    div.style.fontSize  = '11px';
+    const displayTxt = t.label ? t.label : t.price.toFixed(1);
+    div.textContent = displayTxt;
+    axisEl.appendChild(div);
+  });
 }
 
 function buildCandlestickChart(canvas, bars, gridLines, beh) {
@@ -811,8 +907,8 @@ function buildCandlestickChart(canvas, bars, gridLines, beh) {
           position: 'right',
           min: allLow - pad,
           max: allHigh + pad,
-          ticks: { color: '#333333', font: { size: 10 }, maxTicksLimit: 6 },
-          grid: { color: '#e8eaf0' },
+          display: false,
+          grid: { color: '#e8eaf0', drawTicks: false },
         }
       },
       plugins: { legend: { display: false }, tooltip: { enabled: false } },
