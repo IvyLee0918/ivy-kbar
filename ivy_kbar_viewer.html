@@ -119,8 +119,8 @@
   .th-s { color: #1565c0; }
   .beh-curr-label { color: var(--muted); font-size: 13px; }
   .beh-curr-line  { color: #1565c0; font-weight: 700; font-size: 15px; }
-  .beh-up   { background: #fff176; color: #5d4037; border-radius: 3px; padding: 1px 5px; font-weight: 700; }
-  .beh-dn   { background: #ccff90; color: #33691e; border-radius: 3px; padding: 1px 5px; font-weight: 700; }
+  .beh-up   { background: #f9a825; color: #000; border-radius: 3px; padding: 1px 5px; font-weight: 700; }
+  .beh-dn   { background: #43a047; color: #fff; border-radius: 3px; padding: 1px 5px; font-weight: 700; }
   .beh-last { background: #eeeeee; color: #555; border-radius: 3px; padding: 1px 5px; font-size: 13px; }
   .beh-price { color: #e65100; font-size: 13px; margin-left: 3px; }
   .zone-t { color: #c62828; font-weight: 700; }
@@ -141,7 +141,7 @@
   }
   .chart-title {
     padding: 6px 10px;
-    font-size: 13px; color: var(--muted);
+    font-size: 14px; color: #111111; font-weight: 600;
     border-bottom: 1px solid var(--border);
     display: flex; justify-content: space-between;
     background: #eef2ff;
@@ -698,7 +698,7 @@ function buildCandlestickChart(canvas, bars, gridLines, beh) {
 
         // 標籤
         if (g.label) {
-          ctx.fillStyle = g.labelColor || g.color;
+          ctx.fillStyle = g.labelColor || '#444444';
           ctx.font = '10px monospace';
           ctx.textAlign = 'right';
           ctx.fillText(g.label, chartArea.right - 2, y - 2);
@@ -849,9 +849,9 @@ function buildGridLines(gh, gl, div, layer, zTop, zBot) {
   const half   = gl + priceRange / 2;
   const third1 = gl + priceRange / 3;
   const third2 = gl + priceRange * 2 / 3;
-  const isMain = div === 12
-    ? ['rgba(30,120,220,0.7)', 'rgba(20,90,190,0.7)', 'rgba(20,90,190,0.5)']
-    : ['rgba(120,50,200,0.7)', 'rgba(100,30,180,0.7)', 'rgba(100,30,180,0.5)'];
+  // 格線統一用淺灰（白底背景下藍/紫太搶眼）
+  // 特殊線（半線/三分線）仍保留深色
+  const isMain = ['rgba(160,160,160,0.6)', 'rgba(140,140,140,0.5)', 'rgba(180,180,180,0.35)'];
 
   return layer.map(item => {
     const p = item.value;
@@ -860,14 +860,14 @@ function buildGridLines(gh, gl, div, layer, zTop, zBot) {
     const isThird  = Math.abs(p - third1) < tol || Math.abs(p - third2) < tol;
     const isEdge   = p === rd(gh) || p === rd(gl);
 
-    if (isHalf)  { color = 'rgba(210,30,30,0.9)'; width = 1.5; dash = []; }
-    else if (isThird) { color = 'rgba(30,30,30,0.9)'; width = 1.5; dash = []; }
+    if (isHalf)  { color = 'rgba(180,30,30,0.75)'; width = 1.5; dash = []; }
+    else if (isThird) { color = 'rgba(80,80,80,0.8)'; width = 1.2; dash = []; }
     else if (isEdge)  { color = isMain[0]; width = 1; dash = []; }
 
     // 在區間範圍內的線加標籤
     if (zTop && zBot && p >= zBot * 0.999 && p <= zTop * 1.001) {
       label = p.toFixed(1);
-      labelColor = color;
+      labelColor = '#444444';
     }
 
     return { price: p, color, width, dash, label, labelColor };
