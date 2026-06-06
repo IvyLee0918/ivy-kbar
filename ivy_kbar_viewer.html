@@ -49,8 +49,7 @@ body{background:var(--bg);color:var(--text);font-family:'Helvetica Neue',sans-se
 .price-axis .tick{position:absolute;left:3px;right:3px;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#333;font-family:monospace;}
 .price-axis .tick.half{color:#c62828;font-weight:700;}
 .price-axis .tick.edge{color:#1565c0;font-weight:600;}
-.price-axis .tick.target-up{color:#e65100;font-weight:700;background:#fff3e0;border-radius:2px;padding:0 2px;}
-.price-axis .tick.target-dn{color:#1b5e20;font-weight:700;background:#f1f8e9;border-radius:2px;padding:0 2px;}
+
 #loading{display:none;position:fixed;inset:0;background:rgba(255,255,255,.9);align-items:center;justify-content:center;flex-direction:column;gap:14px;z-index:999;}
 #loading.show{display:flex;}
 .spinner{width:36px;height:36px;border:3px solid var(--border);border-top-color:#1565c0;border-radius:50%;animation:spin .8s linear infinite;}
@@ -445,18 +444,13 @@ function fillAxis(cardEl,chart,gridLines,beh){
   const pr=Math.max(...gridLines.map(g=>g.price))-Math.min(...gridLines.map(g=>g.price));
   const half=Math.min(...gridLines.map(g=>g.price))+pr/2,tol=pr*0.001;
 
-  // 顯示所有在可視範圍內的格線（純數字，不加文字）
+  // 顯示所有在可視範圍內的格線實際值（純數字，不加目標近似值）
   gridLines.forEach(g=>{
     if(g.price<minY||g.price>maxY)return;
     const isH=Math.abs(g.price-half)<tol;
     const isSolid=Array.isArray(g.dash)&&g.dash.length===0;
-    ticks.push({price:g.price,cls:'tick'+(isH?' half':isSolid?' edge':''),label:null});
+    ticks.push({price:g.price,cls:'tick'+(isH?' half':isSolid?' edge':'')});
   });
-
-  // 目標線（直接用 behavior_state.json 的數值，不重算）
-  const tUp=beh.next_up_approx_dn,tDn=beh.next_dn_approx_up;
-  if(tUp!=null&&tUp>=minY&&tUp<=maxY)ticks.push({price:tUp,cls:'tick target-up',label:null});
-  if(tDn!=null&&tDn>=minY&&tDn<=maxY)ticks.push({price:tDn,cls:'tick target-dn',label:null});
 
   // 去重（以 toFixed(2) 為 key）、排序高→低
   const sorted=ticks.filter(t=>{
