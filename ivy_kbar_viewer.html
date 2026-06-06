@@ -114,6 +114,8 @@ async function initApp(){
     behaviorState=JSON.parse(new TextDecoder().decode(behBuf));
     setLoadMsg('讀取 settings…');
     await loadSettings();
+    setLoadMsg('讀取股票名稱…');
+    await loadStockNames();
     populateSel();
     hideLoading();
   }catch(e){hideLoading();setStatus('初始化失敗: '+e.message,true);console.error(e);}
