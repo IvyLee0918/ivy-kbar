@@ -8,24 +8,24 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
   :root {
-    --bg:       #0d0f14;
-    --surface:  #151820;
-    --border:   #252a36;
-    --text:     #d4dae8;
-    --muted:    #5a6380;
-    --accent:   #4fc3f7;
-    --up:       #ef5350;
-    --dn:       #26c6da;
-    --gold:     #ffd740;
-    --lime:     #a8ff24;
-    --orange:   #ff8c00;
+    --bg:       #ffffff;
+    --surface:  #f5f6f8;
+    --border:   #d0d5de;
+    --text:     #1a1d26;
+    --muted:    #6b7280;
+    --accent:   #1565c0;
+    --up:       #c62828;
+    --dn:       #00796b;
+    --gold:     #e65100;
+    --lime:     #33691e;
+    --orange:   #e65100;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
     background: var(--bg);
     color: var(--text);
     font-family: 'SF Pro Display', 'Helvetica Neue', sans-serif;
-    font-size: 13px;
+    font-size: 15px;
     min-height: 100vh;
   }
 
@@ -41,13 +41,13 @@
     flex: 1;
     background: var(--bg); color: var(--text);
     border: 1px solid var(--border); border-radius: 6px;
-    padding: 6px 10px; font-size: 14px;
+    padding: 6px 10px; font-size: 16px;
     appearance: none;
   }
   #btn-load {
-    background: var(--accent); color: #000;
+    background: var(--accent); color: #fff;
     border: none; border-radius: 6px;
-    padding: 7px 14px; font-size: 13px; font-weight: 600;
+    padding: 7px 14px; font-size: 15px; font-weight: 600;
     cursor: pointer; white-space: nowrap;
   }
   #btn-load:active { opacity: 0.7; }
@@ -55,10 +55,11 @@
   /* ── 狀態訊息 ── */
   #status-bar {
     padding: 6px 12px;
-    font-size: 11px; color: var(--muted);
+    font-size: 13px; color: var(--muted);
     min-height: 24px;
+    background: var(--bg);
   }
-  #status-bar.err { color: #ef9a9a; }
+  #status-bar.err { color: #c62828; }
 
   /* ── 登入 ── */
   #login-section {
@@ -66,43 +67,70 @@
     align-items: center; justify-content: center;
     gap: 16px; padding: 60px 20px;
   }
-  #login-section h2 { font-size: 18px; color: var(--accent); }
+  #login-section h2 { font-size: 20px; color: var(--accent); }
   #btn-signin {
     background: #fff; color: #333;
-    border: none; border-radius: 8px;
-    padding: 12px 24px; font-size: 15px; font-weight: 600;
+    border: 1px solid #d0d5de; border-radius: 8px;
+    padding: 12px 24px; font-size: 17px; font-weight: 600;
     cursor: pointer; display: flex; align-items: center; gap: 8px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.12);
   }
   .google-icon { width: 18px; height: 18px; }
 
-  /* ── 行為列 ── */
+  /* ── 現價 ── */
+  #price-display {
+    background: var(--surface);
+    border-bottom: 2px solid var(--border);
+    padding: 8px 14px;
+    display: none; align-items: center; gap: 10px;
+  }
+  #price-label { font-size: 13px; color: var(--muted); }
+  #price-value {
+    font-size: 28px; font-weight: 800;
+    color: var(--orange);
+    letter-spacing: 0.5px;
+  }
+
+  /* ── 行為表格 ── */
   #behavior-bar {
-    background: #1a1f2e;
-    border-bottom: 1px solid var(--border);
-    padding: 8px 12px;
-    font-size: 12px; line-height: 1.8;
+    background: var(--bg);
+    border-bottom: 2px solid var(--border);
+    padding: 8px 10px;
     display: none;
   }
-  .beh-row { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; }
-  .beh-label { color: var(--muted); font-size: 11px; }
-  .beh-line  { color: var(--accent); font-weight: 700; }
-  .beh-up    { background: #F9F900; color: #000; border-radius: 3px; padding: 0 4px; font-weight: 700; }
-  .beh-dn    { background: #A8FF24; color: #000; border-radius: 3px; padding: 0 4px; font-weight: 700; }
-  .beh-last  { background: #3a3a3a; color: #ccc; border-radius: 3px; padding: 0 4px; }
-  .beh-price { color: #ffd740; font-size: 11px; }
-  .beh-sep   { color: var(--border); }
-  .beh-price-now {
-    background: var(--orange); color: #fff;
-    border-radius: 4px; padding: 2px 6px;
-    font-size: 13px; font-weight: 700;
+  .beh-table {
+    width: 100%; border-collapse: collapse;
+    font-size: 14px;
   }
-  .zone-t { color: #FF5809; font-weight: 700; }
-  .zone-s { color: #004B97; background: #9bbcff; border-radius: 3px; padding: 0 4px; font-weight: 700; }
+  .beh-table th {
+    padding: 5px 8px;
+    font-size: 15px; font-weight: 700;
+    border-bottom: 2px solid var(--border);
+    text-align: center;
+  }
+  .beh-table td {
+    padding: 4px 8px;
+    border-bottom: 1px solid #e8eaf0;
+    vertical-align: top;
+    font-size: 14px;
+  }
+  .beh-table tr:last-child td { border-bottom: none; }
+  .th-t { color: #c62828; }
+  .th-s { color: #1565c0; }
+  .beh-curr-label { color: var(--muted); font-size: 13px; }
+  .beh-curr-line  { color: #1565c0; font-weight: 700; font-size: 15px; }
+  .beh-up   { background: #fff176; color: #5d4037; border-radius: 3px; padding: 1px 5px; font-weight: 700; }
+  .beh-dn   { background: #ccff90; color: #33691e; border-radius: 3px; padding: 1px 5px; font-weight: 700; }
+  .beh-last { background: #eeeeee; color: #555; border-radius: 3px; padding: 1px 5px; font-size: 13px; }
+  .beh-price { color: #e65100; font-size: 13px; margin-left: 3px; }
+  .zone-t { color: #c62828; font-weight: 700; }
+  .zone-s { color: #1565c0; font-weight: 700; }
 
   /* ── K 線圖區 ── */
   #chart-area {
     padding: 4px 8px 80px;
     display: none;
+    background: var(--bg);
   }
   .chart-card {
     background: var(--surface);
@@ -113,31 +141,19 @@
   }
   .chart-title {
     padding: 6px 10px;
-    font-size: 11px; color: var(--muted);
+    font-size: 13px; color: var(--muted);
     border-bottom: 1px solid var(--border);
     display: flex; justify-content: space-between;
+    background: #eef2ff;
   }
-  .chart-canvas-wrap { position: relative; height: 340px; }
+  .chart-canvas-wrap { position: relative; height: 340px; background: #fff; }
   canvas { width: 100% !important; }
-
-  /* ── 格線標籤浮層 ── */
-  .grid-label {
-    position: absolute; right: 4px;
-    font-size: 9px; color: var(--muted);
-    pointer-events: none;
-    transform: translateY(-50%);
-    white-space: nowrap;
-  }
-  .grid-label.t-up   { color: #FF5809; font-weight: 700; }
-  .grid-label.t-dn   { color: #007500; font-weight: 700; }
-  .grid-label.s-up   { color: #FF5809; }
-  .grid-label.s-dn   { color: #004B97; }
 
   /* ── 載入動畫 ── */
   #loading {
     display: none;
     position: fixed; inset: 0;
-    background: rgba(13,15,20,0.88);
+    background: rgba(255,255,255,0.9);
     align-items: center; justify-content: center;
     flex-direction: column; gap: 14px;
     z-index: 999;
@@ -151,7 +167,7 @@
     animation: spin 0.8s linear infinite;
   }
   @keyframes spin { to { transform: rotate(360deg); } }
-  #loading-msg { color: var(--muted); font-size: 12px; }
+  #loading-msg { color: var(--muted); font-size: 14px; }
 
   /* ── Tab 切換 ── */
   #tf-tabs {
@@ -163,10 +179,10 @@
   }
   .tf-tab {
     padding: 5px 12px; border-radius: 5px 5px 0 0;
-    font-size: 12px; cursor: pointer;
+    font-size: 14px; cursor: pointer;
     color: var(--muted); background: transparent; border: none;
   }
-  .tf-tab.active { background: var(--bg); color: var(--accent); }
+  .tf-tab.active { background: var(--bg); color: var(--accent); font-weight: 700; border-top: 2px solid var(--accent); }
 </style>
 </head>
 <body>
@@ -197,10 +213,15 @@
     <button id="btn-load" onclick="loadSymbol()">載入</button>
   </div>
   <div id="status-bar">準備就緒</div>
+  <div id="price-display">
+    <span id="price-label">現價</span>
+    <span id="price-value">—</span>
+  </div>
   <div id="tf-tabs">
     <button class="tf-tab active" onclick="switchTF('1D','日K')">日K</button>
     <button class="tf-tab" onclick="switchTF('1min','1分K')">1分K</button>
     <button class="tf-tab" onclick="switchTF('5min','5分K')">5分K</button>
+    <button class="tf-tab" onclick="switchTF('30min','30分K')">30分K</button>
   </div>
   <div id="behavior-bar"></div>
   <div id="chart-area"></div>
@@ -402,7 +423,7 @@ async function loadSymbol() {
 function switchTF(tf, label) {
   currentTF = tf;
   document.querySelectorAll('.tf-tab').forEach((t,i) => {
-    t.classList.toggle('active', ['1D','1min','5min'][i] === tf);
+    t.classList.toggle('active', ['1D','1min','5min','30min'][i] === tf);
   });
   if (currentSymbol) renderAll();
 }
@@ -411,6 +432,14 @@ async function renderAll() {
   if (!currentSymbol || !sqlDb) return;
   showLoading('繪製圖表中…');
   try {
+    // 現價
+    const lp = getLastPrice(currentSymbol);
+    const priceEl = document.getElementById('price-value');
+    const priceDisp = document.getElementById('price-display');
+    if (lp != null) {
+      priceEl.textContent = fmt(lp);
+      priceDisp.style.display = 'flex';
+    }
     renderBehaviorBar(currentSymbol);
     await renderCharts(currentSymbol);
     document.getElementById('behavior-bar').style.display = 'block';
@@ -432,81 +461,65 @@ function renderBehaviorBar(sym) {
   const symBeh = behaviorState[sym] || {};
   const bestDiv = (symBeh._meta || {}).best_div || '16';
 
-  const rows = [];
+  // 只顯示 bestDiv 的 T / S
+  const tKey = `g0_d${bestDiv}_T`;
+  const sKey = `g0_d${bestDiv}_S`;
+  const tBeh = symBeh[tKey] || {};
+  const sBeh = symBeh[sKey] || {};
 
-  for (const zoneType of ['T', 'S']) {
-    const key = `g0_d${bestDiv}_${zoneType}`;
-    const beh = symBeh[key];
-    if (!beh) continue;
-
+  function cellHtml(beh) {
     const cl  = beh.current_line || '—';
     const nu  = beh.next_up || '';
     const nd  = beh.next_dn || '';
     const nuUp = beh.next_up_approx_up;
     const nuDn = beh.next_up_approx_dn;
-    const ndUp = beh.dn_approx_up || beh.next_dn_approx_up;
+    const ndUp = beh.next_dn_approx_up;
     const ndDn = beh.next_dn_approx_dn;
     const le   = beh.last_event || '';
     const leb  = beh.last_event_bar ? beh.last_event_bar.slice(11,16) : '';
 
-    const zClass = zoneType === 'T' ? 'zone-t' : 'zone-s';
-    let html = `<div class="beh-row">`;
-    html += `<span class="${zClass}">${zoneType}${bestDiv}</span>`;
-    html += `<span class="beh-label">當前</span><span class="beh-line">${cl}</span>`;
-
+    let h = `<span class="beh-curr-label">當前</span> <span class="beh-curr-line">${cl}</span><br>`;
     if (nu) {
-      const priceStr = (nuUp != null && nuDn != null)
-        ? ` <span class="beh-price">(${fmt(nuUp)} ${fmt(nuDn)})</span>` : '';
-      html += `<span class="beh-sep">｜</span><span class="beh-up">${nu}</span>${priceStr}`;
+      const p = (nuUp!=null&&nuDn!=null) ? `<span class="beh-price">(${fmt(nuUp)} ${fmt(nuDn)})</span>` : '';
+      h += `<span class="beh-up">${nu}</span>${p}<br>`;
     }
     if (nd) {
-      const priceStr = (ndUp != null && ndDn != null)
-        ? ` <span class="beh-price">(${fmt(ndUp)} ${fmt(ndDn)})</span>` : '';
-      html += `<span class="beh-label"> 或 </span><span class="beh-dn">${nd}</span>${priceStr}`;
+      const p = (ndUp!=null&&ndDn!=null) ? `<span class="beh-price">(${fmt(ndUp)} ${fmt(ndDn)})</span>` : '';
+      h += `<span class="beh-dn">${nd}</span>${p}<br>`;
     }
     if (le) {
-      html += `<span class="beh-sep">｜</span><span class="beh-label">上次</span>`;
-      html += `<span class="beh-last">${le}</span>`;
-      if (leb) html += `<span class="beh-price">${leb}</span>`;
+      h += `<span class="beh-curr-label">上次</span> <span class="beh-last">${le}</span>`;
+      if (leb) h += ` <span class="beh-price">${leb}</span>`;
     }
-
-    // 舊目的
-    if (beh.is_legacy_goal && beh.legacy_label_up) {
-      html += `<br><span style="color:#bb86fc;font-size:11px">★舊目的 ${beh.legacy_move_type||''} `;
-      html += `<span class="beh-up">${beh.legacy_label_up}</span>`;
-      if (beh.legacy_up_approx_up != null) html += ` <span class="beh-price">(${fmt(beh.legacy_up_approx_up)} ${fmt(beh.legacy_up_approx_dn)})</span>`;
-      if (beh.legacy_label_dn) {
-        html += ` / <span class="beh-dn">${beh.legacy_label_dn}</span>`;
-        if (beh.legacy_dn_approx_up != null) html += ` <span class="beh-price">(${fmt(beh.legacy_dn_approx_up)} ${fmt(beh.legacy_dn_approx_dn)})</span>`;
-      }
-      html += `</span>`;
-    }
-    html += `</div>`;
-    rows.push(html);
+    return h;
   }
 
-  // 現價
-  const lastPrice = getLastPrice(sym);
-  let priceHtml = '';
-  if (lastPrice != null) {
-    priceHtml = `<div class="beh-row" style="margin-top:4px">
-      <span class="beh-label">現價</span>
-      <span class="beh-price-now">${fmt(lastPrice)}</span>
-    </div>`;
-  }
-
-  bar.innerHTML = rows.join('<div style="height:4px"></div>') + priceHtml;
+  bar.innerHTML = `
+    <table class="beh-table">
+      <thead><tr>
+        <th class="th-t">T${bestDiv}</th>
+        <th class="th-s">S${bestDiv}</th>
+      </tr></thead>
+      <tbody><tr>
+        <td>${cellHtml(tBeh)}</td>
+        <td>${cellHtml(sBeh)}</td>
+      </tr></tbody>
+    </table>`;
 }
 
 function getLastPrice(sym) {
   if (!sqlDb) return null;
   try {
-    const table = currentTF === '1D' ? 'kbar_daily' : 'kbar_1min';
     const res = sqlDb.exec(
-      `SELECT close FROM ${table} WHERE symbol=? ORDER BY ts DESC LIMIT 1`,
+      `SELECT Close FROM kbar_1min WHERE symbol=? ORDER BY ts DESC LIMIT 1`,
       [sym]
     );
-    return res.length && res[0].values.length ? res[0].values[0][0] : null;
+    if (res.length && res[0].values.length) return res[0].values[0][0];
+    const res2 = sqlDb.exec(
+      `SELECT Close FROM kbar_daily WHERE symbol=? ORDER BY ts DESC LIMIT 1`,
+      [sym]
+    );
+    return res2.length && res2[0].values.length ? res2[0].values[0][0] : null;
   } catch(e) { return null; }
 }
 
@@ -558,11 +571,25 @@ async function renderCharts(sym) {
 }
 
 function queryBars(sym, tf) {
-  const table = tf === '1D' ? 'kbar_daily' : 'kbar_1min';
-  const limit  = tf === '1D' ? 120 : 200;
   try {
+    if (tf === '30min') {
+      // 從 1分K resample 成 30分K（closed=right, label=right）
+      const res = sqlDb.exec(
+        `SELECT ts, Open, High, Low, Close, Volume FROM kbar_1min
+         WHERE symbol=? ORDER BY ts ASC`,
+        [sym]
+      );
+      if (!res.length) return [];
+      const raw = res[0].values.map(r => ({
+        ts: r[0], open: r[1], high: r[2], low: r[3], close: r[4], volume: r[5]
+      }));
+      return resample30min(raw).slice(-120);
+    }
+    const table = tf === '1D' ? 'kbar_daily' : 'kbar_1min';
+    const limit  = tf === '1D' ? 120 : 240;
+    const col    = tf === '1D' ? 'Open,High,Low,Close,Volume' : 'Open,High,Low,Close,Volume';
     const res = sqlDb.exec(
-      `SELECT ts, open, high, low, close, volume FROM ${table}
+      `SELECT ts, Open, High, Low, Close, Volume FROM ${table}
        WHERE symbol=? ORDER BY ts DESC LIMIT ${limit}`,
       [sym]
     );
@@ -571,6 +598,37 @@ function queryBars(sym, tf) {
       ts: r[0], open: r[1], high: r[2], low: r[3], close: r[4], volume: r[5]
     })).reverse();
   } catch(e) { console.error(e); return []; }
+}
+
+// 30分K resample（closed=right, label=right，台股標準）
+function resample30min(bars) {
+  const buckets = {};
+  bars.forEach(b => {
+    const d = new Date(b.ts);
+    // 對齊到右邊界：分鐘進位到下一個30分
+    const mins = d.getMinutes();
+    const roundedMins = Math.ceil((mins + 1) / 30) * 30;
+    const aligned = new Date(d);
+    if (roundedMins >= 60) {
+      aligned.setMinutes(0);
+      aligned.setHours(d.getHours() + 1);
+    } else {
+      aligned.setMinutes(roundedMins);
+    }
+    aligned.setSeconds(0); aligned.setMilliseconds(0);
+    const key = aligned.toISOString();
+    if (!buckets[key]) {
+      buckets[key] = { ts: b.ts, open: b.open, high: b.high, low: b.low, close: b.close, volume: b.volume, _label: key };
+    } else {
+      buckets[key].high   = Math.max(buckets[key].high, b.high);
+      buckets[key].low    = Math.min(buckets[key].low,  b.low);
+      buckets[key].close  = b.close;
+      buckets[key].volume += b.volume;
+    }
+  });
+  return Object.values(buckets)
+    .sort((a,b) => a._label.localeCompare(b._label))
+    .filter(b => b.volume > 0);
 }
 
 // ═══════════════════════════════════════════════════
@@ -641,7 +699,7 @@ function buildCandlestickChart(canvas, bars, gridLines, beh) {
         // 標籤
         if (g.label) {
           ctx.fillStyle = g.labelColor || g.color;
-          ctx.font = '8px monospace';
+          ctx.font = '10px monospace';
           ctx.textAlign = 'right';
           ctx.fillText(g.label, chartArea.right - 2, y - 2);
         }
@@ -664,7 +722,7 @@ function buildCandlestickChart(canvas, bars, gridLines, beh) {
         ctx.setLineDash([]);
         if (name) {
           ctx.fillStyle = color;
-          ctx.font = 'bold 9px monospace';
+          ctx.font = 'bold 11px monospace';
           ctx.textAlign = 'left';
           ctx.fillText(name, chartArea.left + 4, y - 2);
         }
@@ -692,7 +750,7 @@ function buildCandlestickChart(canvas, bars, gridLines, beh) {
         const yH = yScale.getPixelForValue(b.high);
         const yL = yScale.getPixelForValue(b.low);
         const isUp = b.close >= b.open;
-        const color = isUp ? '#ef5350' : '#26c6da';
+        const color = isUp ? '#c62828' : '#2e7d32';
 
         // 影線
         ctx.beginPath();
