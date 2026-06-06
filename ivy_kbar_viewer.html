@@ -143,6 +143,7 @@ async function loadStockNames(){
     console.log('股票名稱載入完成，共',Object.keys(stockNames).length,'筆');
   }catch(e){
     console.warn('stock_id.xlsx 載入失敗:',e.message);
+    setStatus('股票名稱載入失敗: '+e.message, true);
   }
 }
 
