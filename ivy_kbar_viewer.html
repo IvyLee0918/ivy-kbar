@@ -240,8 +240,44 @@ function resampleNmin(bars,n){
 }
 
 // ── 格線計算 ──
-function rdFloor(v){return Math.floor(parseFloat(v)*10)/10;}
-function rd(v){return rdFloor(Math.round(parseFloat(v)*100)/100);}
+// ── round_down：完整移植自 round_down.py ──
+function roundDown(v) {
+  const orig=parseFloat(v);
+  const s=orig.toFixed(10).replace(/0+$/,'');
+  const parts=s.split('.');
+  const intPart=parts[0];
+  let dec=(parts[1]||'00').padEnd(2,'0').slice(0,2);
+  const c10=parseInt(dec[0]),c11=parseInt(dec[1]);
+  const dollars=parseInt(intPart);
+  function p1(){let d=dollars,t=c10,e=c11;if(e<3)e=0;else if(e<8)e=5;else{if(t<9){e=0;t++;}else{e=0;t=0;d++;}}return parseFloat(d+'.'+t+e);}
+  function pXY(){let d=dollars,t=c10,e=c11;if(t%2===0&&e>=6){e=0;if(t<9)t++;else{t=0;d++;}}else if(t%2===0&&e<6){e=0;}else if(t%2!==0&&e>=5){e=0;if(t<9)t++;else{t=0;d++;}}else if(t%2!==0&&e<5){e=0;}return d+'.'+t+e;}
+  function p2(str){const pp=str.split('.');let d=parseInt(pp[0]),t=parseInt((pp[1]||'0')[0]);if(t<3)t=0;else if(t>=8){d++;t=0;}else t=5;return parseFloat(d+'.'+t);}
+  if(orig<10)return orig;
+  if(orig<50)return p1();
+  if(orig<100)return parseFloat(pXY());
+  if(orig<500)return p2(pXY());
+  return p2(orig.toString());
+}
+// pyRound2：完整模擬 Python round(v, 2) 行為
+// 包含 banker's rounding 和浮點儲存的精確處理
+// 使用 toPrecision(17) 取得 IEEE 754 實際值的字串，再從字串做四捨五入
+function pyRound2(v) {
+  const s=v.toPrecision(17);
+  const dot=s.indexOf('.');
+  if(dot===-1)return parseFloat(parseFloat(s).toFixed(2));
+  const intStr=s.slice(0,dot),decStr=s.slice(dot+1);
+  const d1=parseInt(decStr[0]||'0'),d2=parseInt(decStr[1]||'0'),d3=parseInt(decStr[2]||'0');
+  let c1=d1,c2=d2,intVal=parseInt(intStr);
+  if(d3>5){c2++;if(c2>=10){c2=0;c1++;}if(c1>=10){c1=0;intVal++;}}
+  else if(d3===5){
+    const rest=decStr.slice(3).split('').some(ch=>ch!=='0');
+    if(rest){c2++;if(c2>=10){c2=0;c1++;}if(c1>=10){c1=0;intVal++;}}
+    else if(c2%2!==0){c2++;if(c2>=10){c2=0;c1++;}if(c1>=10){c1=0;intVal++;}}
+  }
+  return parseFloat(intVal+'.'+c1+c2);
+}
+// rd = 先 pyRound2（四捨五入到2位），再 roundDown（你的進位規則）
+function rd(v){return roundDown(pyRound2(parseFloat(v)));}
 function aUp(lo,hi){return rd(hi-(hi-lo)*APPROX_RATIO);}
 function aDn(lo,hi){return rd(lo+(hi-lo)*APPROX_RATIO);}
 function buildLayer(lo,hi,n){
@@ -408,20 +444,33 @@ function fillAxis(cardEl,chart,gridLines,beh){
   const ticks=[];const seen=new Set();
   const pr=Math.max(...gridLines.map(g=>g.price))-Math.min(...gridLines.map(g=>g.price));
   const half=Math.min(...gridLines.map(g=>g.price))+pr/2,tol=pr*0.001;
+
+  // 顯示所有在可視範圍內的格線（純數字，不加文字）
   gridLines.forEach(g=>{
     if(g.price<minY||g.price>maxY)return;
     const isH=Math.abs(g.price-half)<tol;
     const isSolid=Array.isArray(g.dash)&&g.dash.length===0;
-    if(isH||isSolid)ticks.push({price:g.price,cls:isH?'tick half':'tick edge',label:null});
+    ticks.push({price:g.price,cls:'tick'+(isH?' half':isSolid?' edge':''),label:null});
   });
-  // 目標線（直接用 behavior_state.json 的數值）
+
+  // 目標線（直接用 behavior_state.json 的數值，不重算）
   const tUp=beh.next_up_approx_dn,tDn=beh.next_dn_approx_up;
-  if(tUp!=null&&tUp>=minY&&tUp<=maxY)ticks.push({price:tUp,cls:'tick target-up',label:beh.next_up||null});
-  if(tDn!=null&&tDn>=minY&&tDn<=maxY)ticks.push({price:tDn,cls:'tick target-dn',label:beh.next_dn||null});
-  const sorted=ticks.filter(t=>{const k=parseFloat(t.price).toFixed(2);if(seen.has(k))return false;seen.add(k);return true;}).sort((a,b)=>b.price-a.price);
+  if(tUp!=null&&tUp>=minY&&tUp<=maxY)ticks.push({price:tUp,cls:'tick target-up',label:null});
+  if(tDn!=null&&tDn>=minY&&tDn<=maxY)ticks.push({price:tDn,cls:'tick target-dn',label:null});
+
+  // 去重（以 toFixed(2) 為 key）、排序高→低
+  const sorted=ticks.filter(t=>{
+    const k=parseFloat(t.price).toFixed(2);
+    if(seen.has(k))return false;seen.add(k);return true;
+  }).sort((a,b)=>b.price-a.price);
+
   ax.innerHTML='';
+  // 最小間距：避免數字重疊（14px）
+  let lastTop=-99;
   sorted.forEach(t=>{
     const pct=(maxY-t.price)/range,top=pct*axH;
+    if(top-lastTop<13&&lastTop>0)return; // 太密就跳過
+    lastTop=top;
     const d=document.createElement('div');d.className=t.cls;
     d.style.top=(top-7)+'px';
     d.textContent=parseFloat(t.price).toFixed(1);
