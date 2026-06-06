@@ -397,22 +397,20 @@ function buildChart(canvas,bars,gridLines,beh){
       ctx.beginPath();ctx.moveTo(chartArea.left,py);ctx.lineTo(chartArea.right,py);
       ctx.strokeStyle=g.color;ctx.lineWidth=g.width;ctx.setLineDash(g.dash);ctx.stroke();ctx.setLineDash([]);
     });
-    // 目標線（直接用 beh 的值，behavior_state.json 的數值）
-    const tUp=beh.next_up_approx_dn,tDn=beh.next_dn_approx_up;
-    [[tUp,'#e65100',beh.next_up],[tDn,'#1b5e20',beh.next_dn]].forEach(([price,color,name])=>{
+    // 目標線：用實際值（next_up_value / next_dn_value）定位，與右側價格欄一致
+    const tUpV=beh.next_up_value,tDnV=beh.next_dn_value;
+    const tUpAU=beh.next_up_approx_up,tUpAD=beh.next_up_approx_dn;
+    const tDnAU=beh.next_dn_approx_up,tDnAD=beh.next_dn_approx_dn;
+    [[tUpV,'#e65100',beh.next_up,tUpAU,tUpAD],[tDnV,'#1b5e20',beh.next_dn,tDnAU,tDnAD]].forEach(([price,color,name,aU,aD])=>{
       if(price==null)return;
       const py=y.getPixelForValue(price);
       if(py<chartArea.top||py>chartArea.bottom)return;
       ctx.beginPath();ctx.moveTo(chartArea.left,py);ctx.lineTo(chartArea.right,py);
       ctx.strokeStyle=color;ctx.lineWidth=2;ctx.setLineDash([6,3]);ctx.stroke();ctx.setLineDash([]);
       if(name){
-        // 標籤格式：「多發動 82.3 (82.6 82)」— 名稱 + 實際值 + 近似值
-        const isUp=price===tUp;
-        const val2=isUp?beh.next_up_value:beh.next_dn_value;
-        const aUp2=isUp?beh.next_up_approx_up:beh.next_dn_approx_up;
-        const aDn2=isUp?beh.next_up_approx_dn:beh.next_dn_approx_dn;
-        const valStr=val2!=null?(' '+fmt(val2)):'';
-        const approxStr=(aUp2!=null&&aDn2!=null)?(' ('+fmt(aUp2)+' '+fmt(aDn2)+')'):'';
+        // 標籤：名稱 + 實際值 + 近似值
+        const valStr=' '+fmt(price);
+        const approxStr=(aU!=null&&aD!=null)?(' ('+fmt(aU)+' '+fmt(aD)+')'):'';
         const fullLabel=name+valStr+approxStr;
         ctx.font='bold 11px sans-serif';
         const tw=ctx.measureText(fullLabel).width;
@@ -427,19 +425,21 @@ function buildChart(canvas,bars,gridLines,beh){
     // current_line 黑色虛線，靠左標籤：「L7 80.6 (81.2 80)」
     const caDn=beh.current_approx_dn,caUp=beh.current_approx_up,cl=beh.current_line;
     if(cl&&caDn!=null&&caUp!=null){
-      const clPrice=(parseFloat(caDn)+parseFloat(caUp))/2;
+      // 從 gridLines 找最接近 approx_dn 的格線實際值，以實際值定位
+      let clActual=null;
+      let bestDiff=Infinity;
+      gridLines.forEach(g=>{
+        // approx_dn < value < approx_up，格線實際值在近似值之間
+        // 找最接近 (caUp+caDn)/2 的格線 price
+        const mid=(parseFloat(caUp)+parseFloat(caDn))/2;
+        const diff=Math.abs(g.price-mid);
+        if(diff<bestDiff){bestDiff=diff;clActual=g.price;}
+      });
+      const clPrice=clActual!=null?clActual:(parseFloat(caDn)+parseFloat(caUp))/2;
       const py=y.getPixelForValue(clPrice);
       if(py>=chartArea.top&&py<=chartArea.bottom){
         ctx.beginPath();ctx.moveTo(chartArea.left,py);ctx.lineTo(chartArea.right,py);
         ctx.strokeStyle='#222';ctx.lineWidth=1.5;ctx.setLineDash([8,4]);ctx.stroke();ctx.setLineDash([]);
-        // 靠左標籤：L值 + 實際值 + 近似值
-        // 實際值：從 gridLines 找最接近 clPrice 的格線
-        let clActual=null;
-        let bestDiff=Infinity;
-        gridLines.forEach(g=>{
-          const diff=Math.abs(g.price-clPrice);
-          if(diff<bestDiff){bestDiff=diff;clActual=g.price;}
-        });
         const valStr=clActual!=null?(' '+fmt(clActual)):'';
         const approxStr='('+fmt(caUp)+' '+fmt(caDn)+')';
         const fullCL=cl+valStr+' '+approxStr;
