@@ -1,0 +1,908 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Ivy 盤態</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.2/sql-wasm.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg:       #0d0f14;
+    --surface:  #151820;
+    --border:   #252a36;
+    --text:     #d4dae8;
+    --muted:    #5a6380;
+    --accent:   #4fc3f7;
+    --up:       #ef5350;
+    --dn:       #26c6da;
+    --gold:     #ffd740;
+    --lime:     #a8ff24;
+    --orange:   #ff8c00;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'SF Pro Display', 'Helvetica Neue', sans-serif;
+    font-size: 13px;
+    min-height: 100vh;
+  }
+
+  /* ── 頂部 bar ── */
+  #topbar {
+    position: sticky; top: 0; z-index: 100;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 8px 12px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  #topbar select {
+    flex: 1;
+    background: var(--bg); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 6px 10px; font-size: 14px;
+    appearance: none;
+  }
+  #btn-load {
+    background: var(--accent); color: #000;
+    border: none; border-radius: 6px;
+    padding: 7px 14px; font-size: 13px; font-weight: 600;
+    cursor: pointer; white-space: nowrap;
+  }
+  #btn-load:active { opacity: 0.7; }
+
+  /* ── 狀態訊息 ── */
+  #status-bar {
+    padding: 6px 12px;
+    font-size: 11px; color: var(--muted);
+    min-height: 24px;
+  }
+  #status-bar.err { color: #ef9a9a; }
+
+  /* ── 登入 ── */
+  #login-section {
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 16px; padding: 60px 20px;
+  }
+  #login-section h2 { font-size: 18px; color: var(--accent); }
+  #btn-signin {
+    background: #fff; color: #333;
+    border: none; border-radius: 8px;
+    padding: 12px 24px; font-size: 15px; font-weight: 600;
+    cursor: pointer; display: flex; align-items: center; gap: 8px;
+  }
+  .google-icon { width: 18px; height: 18px; }
+
+  /* ── 行為列 ── */
+  #behavior-bar {
+    background: #1a1f2e;
+    border-bottom: 1px solid var(--border);
+    padding: 8px 12px;
+    font-size: 12px; line-height: 1.8;
+    display: none;
+  }
+  .beh-row { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; }
+  .beh-label { color: var(--muted); font-size: 11px; }
+  .beh-line  { color: var(--accent); font-weight: 700; }
+  .beh-up    { background: #F9F900; color: #000; border-radius: 3px; padding: 0 4px; font-weight: 700; }
+  .beh-dn    { background: #A8FF24; color: #000; border-radius: 3px; padding: 0 4px; font-weight: 700; }
+  .beh-last  { background: #3a3a3a; color: #ccc; border-radius: 3px; padding: 0 4px; }
+  .beh-price { color: #ffd740; font-size: 11px; }
+  .beh-sep   { color: var(--border); }
+  .beh-price-now {
+    background: var(--orange); color: #fff;
+    border-radius: 4px; padding: 2px 6px;
+    font-size: 13px; font-weight: 700;
+  }
+  .zone-t { color: #FF5809; font-weight: 700; }
+  .zone-s { color: #004B97; background: #9bbcff; border-radius: 3px; padding: 0 4px; font-weight: 700; }
+
+  /* ── K 線圖區 ── */
+  #chart-area {
+    padding: 4px 8px 80px;
+    display: none;
+  }
+  .chart-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 10px;
+    overflow: hidden;
+  }
+  .chart-title {
+    padding: 6px 10px;
+    font-size: 11px; color: var(--muted);
+    border-bottom: 1px solid var(--border);
+    display: flex; justify-content: space-between;
+  }
+  .chart-canvas-wrap { position: relative; height: 340px; }
+  canvas { width: 100% !important; }
+
+  /* ── 格線標籤浮層 ── */
+  .grid-label {
+    position: absolute; right: 4px;
+    font-size: 9px; color: var(--muted);
+    pointer-events: none;
+    transform: translateY(-50%);
+    white-space: nowrap;
+  }
+  .grid-label.t-up   { color: #FF5809; font-weight: 700; }
+  .grid-label.t-dn   { color: #007500; font-weight: 700; }
+  .grid-label.s-up   { color: #FF5809; }
+  .grid-label.s-dn   { color: #004B97; }
+
+  /* ── 載入動畫 ── */
+  #loading {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(13,15,20,0.88);
+    align-items: center; justify-content: center;
+    flex-direction: column; gap: 14px;
+    z-index: 999;
+  }
+  #loading.show { display: flex; }
+  .spinner {
+    width: 36px; height: 36px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #loading-msg { color: var(--muted); font-size: 12px; }
+
+  /* ── Tab 切換 ── */
+  #tf-tabs {
+    display: flex; gap: 4px;
+    padding: 6px 12px 0;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    display: none;
+  }
+  .tf-tab {
+    padding: 5px 12px; border-radius: 5px 5px 0 0;
+    font-size: 12px; cursor: pointer;
+    color: var(--muted); background: transparent; border: none;
+  }
+  .tf-tab.active { background: var(--bg); color: var(--accent); }
+</style>
+</head>
+<body>
+
+<!-- 登入頁 -->
+<div id="login-section">
+  <h2>📊 Ivy 盤態檢視器</h2>
+  <p style="color:var(--muted);text-align:center;line-height:1.6">
+    從 Google Drive 讀取<br>K 線圖 + 格線 + 區間行為
+  </p>
+  <button class="btn-signin" id="btn-signin" onclick="handleSignIn()">
+    <svg class="google-icon" viewBox="0 0 18 18">
+      <path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 01-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/>
+      <path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 009 18z"/>
+      <path fill="#FBBC05" d="M3.964 10.706A5.41 5.41 0 013.682 9c0-.593.102-1.17.282-1.706V4.962H.957A8.996 8.996 0 000 9c0 1.452.348 2.827.957 4.038l3.007-2.332z"/>
+      <path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 00.957 4.962L3.964 7.294C4.672 5.163 6.656 3.58 9 3.58z"/>
+    </svg>
+    使用 Google 帳號登入
+  </button>
+</div>
+
+<!-- 主介面（登入後顯示） -->
+<div id="main-ui" style="display:none">
+  <div id="topbar">
+    <select id="sym-select" onchange="onSymbolChange()">
+      <option value="">— 選擇股票 —</option>
+    </select>
+    <button id="btn-load" onclick="loadSymbol()">載入</button>
+  </div>
+  <div id="status-bar">準備就緒</div>
+  <div id="tf-tabs">
+    <button class="tf-tab active" onclick="switchTF('1D','日K')">日K</button>
+    <button class="tf-tab" onclick="switchTF('1min','1分K')">1分K</button>
+    <button class="tf-tab" onclick="switchTF('5min','5分K')">5分K</button>
+  </div>
+  <div id="behavior-bar"></div>
+  <div id="chart-area"></div>
+</div>
+
+<!-- 載入動畫 -->
+<div id="loading">
+  <div class="spinner"></div>
+  <div id="loading-msg">連接 Google Drive…</div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════
+// 設定
+// ═══════════════════════════════════════════════════
+const CLIENT_ID   = '298194095133-phtnomlmc73hej2bat5a38r7132cqmgh.apps.googleusercontent.com';
+const SCOPES      = 'https://www.googleapis.com/auth/drive.readonly';
+const APPROX_RATIO = 0.833;
+
+// Drive 路徑（根據截圖）
+const DRIVE_PATHS = {
+  kbar:     { folder: 'KBar',           file: 'kbar.db' },
+  behavior: { folder: '2026_structure', file: 'behavior_state.json' },
+  settings: { folder: 'settings' },   // 在 2026_structure 裡
+};
+
+// ═══════════════════════════════════════════════════
+// 全域狀態
+// ═══════════════════════════════════════════════════
+let tokenClient, accessToken = null;
+let sqlDb = null;
+let behaviorState = {};
+let settingsAll   = {};
+let currentSymbol = '';
+let currentTF     = '1D';
+let chartInstances = [];
+let fileIdCache   = {};  // path → fileId
+
+// ═══════════════════════════════════════════════════
+// Google Identity Services
+// ═══════════════════════════════════════════════════
+function loadGIS() {
+  const s = document.createElement('script');
+  s.src = 'https://accounts.google.com/gsi/client';
+  s.onload = () => {
+    tokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: CLIENT_ID,
+      scope: SCOPES,
+      callback: onTokenReceived,
+    });
+  };
+  document.head.appendChild(s);
+}
+
+function handleSignIn() {
+  if (!tokenClient) { setStatus('GIS 尚未載入，請稍候再試', true); return; }
+  tokenClient.requestAccessToken({ prompt: 'consent' });
+}
+
+function onTokenReceived(resp) {
+  if (resp.error) { setStatus('登入失敗: ' + resp.error, true); return; }
+  accessToken = resp.access_token;
+  document.getElementById('login-section').style.display = 'none';
+  document.getElementById('main-ui').style.display = 'block';
+  initApp();
+}
+
+// ═══════════════════════════════════════════════════
+// 初始化
+// ═══════════════════════════════════════════════════
+async function initApp() {
+  showLoading('初始化 SQLite…');
+  try {
+    const SQL = await initSqlJs({
+      locateFile: f => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.2/${f}`
+    });
+    setLoadingMsg('下載 kbar.db…（首次約 5–10 秒）');
+    const dbBuf = await driveDownloadByPath('KBar', 'kbar.db');
+    sqlDb = new SQL.Database(new Uint8Array(dbBuf));
+    setStatus('kbar.db 載入完成');
+
+    setLoadingMsg('讀取 behavior_state…');
+    const behText = await driveDownloadTextByPath('2026_structure', 'behavior_state.json');
+    behaviorState = JSON.parse(behText);
+
+    setLoadingMsg('讀取 settings…');
+    await loadAllSettings();
+
+    populateSymbolSelect();
+    document.getElementById('tf-tabs').style.display = 'flex';
+    hideLoading();
+  } catch(e) {
+    hideLoading();
+    setStatus('初始化失敗: ' + e.message, true);
+    console.error(e);
+  }
+}
+
+// ═══════════════════════════════════════════════════
+// Google Drive API
+// ═══════════════════════════════════════════════════
+async function driveListFolder(folderName, parentFolderName) {
+  // 先找 parentFolder（如果有指定）的 ID
+  let parentQ = parentFolderName
+    ? `name='${parentFolderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`
+    : null;
+
+  let parentId = 'root';
+  if (parentQ) {
+    const r = await driveQuery(parentQ);
+    if (r.files.length) parentId = r.files[0].id;
+  }
+
+  const q = `name='${folderName}' and mimeType='application/vnd.google-apps.folder' and '${parentId}' in parents and trashed=false`;
+  const r = await driveQuery(q);
+  return r.files.length ? r.files[0].id : null;
+}
+
+async function driveGetFileId(folderName, fileName, parentFolderName) {
+  const cacheKey = `${parentFolderName||''}/${folderName}/${fileName}`;
+  if (fileIdCache[cacheKey]) return fileIdCache[cacheKey];
+
+  const folderId = await driveListFolder(folderName, parentFolderName);
+  if (!folderId) throw new Error(`資料夾 ${folderName} 找不到`);
+
+  const q = `name='${fileName}' and '${folderId}' in parents and trashed=false`;
+  const r = await driveQuery(q);
+  if (!r.files.length) throw new Error(`檔案 ${fileName} 找不到`);
+
+  fileIdCache[cacheKey] = r.files[0].id;
+  return r.files[0].id;
+}
+
+async function driveGetFileIdInRoot(folderName, fileName) {
+  // kbar.db 在 python/python應用/KBar/ — 直接搜尋不限父層
+  const cacheKey = `any/${folderName}/${fileName}`;
+  if (fileIdCache[cacheKey]) return fileIdCache[cacheKey];
+
+  const foldersR = await driveQuery(
+    `name='${folderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`
+  );
+  if (!foldersR.files.length) throw new Error(`資料夾 ${folderName} 找不到`);
+
+  for (const f of foldersR.files) {
+    const q = `name='${fileName}' and '${f.id}' in parents and trashed=false`;
+    const r = await driveQuery(q);
+    if (r.files.length) {
+      fileIdCache[cacheKey] = r.files[0].id;
+      return r.files[0].id;
+    }
+  }
+  throw new Error(`${folderName}/${fileName} 找不到`);
+}
+
+async function driveQuery(q) {
+  const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name)`;
+  const r = await fetch(url, { headers: { Authorization: 'Bearer ' + accessToken } });
+  if (!r.ok) throw new Error('Drive API 錯誤 ' + r.status);
+  return r.json();
+}
+
+async function driveDownload(fileId) {
+  const r = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
+    { headers: { Authorization: 'Bearer ' + accessToken } }
+  );
+  if (!r.ok) throw new Error('下載失敗 ' + r.status);
+  return r.arrayBuffer();
+}
+
+async function driveDownloadByPath(folderName, fileName) {
+  const fileId = await driveGetFileIdInRoot(folderName, fileName);
+  return driveDownload(fileId);
+}
+
+async function driveDownloadTextByPath(folderName, fileName) {
+  const fileId = await driveGetFileId(folderName, fileName);
+  const buf = await driveDownload(fileId);
+  return new TextDecoder().decode(buf);
+}
+
+async function driveListFiles(folderId) {
+  const q = `'${folderId}' in parents and trashed=false and mimeType!='application/vnd.google-apps.folder'`;
+  const r = await driveQuery(q);
+  return r.files;
+}
+
+async function loadAllSettings() {
+  // 找 2026_structure 資料夾
+  const structR = await driveQuery(
+    `name='2026_structure' and mimeType='application/vnd.google-apps.folder' and trashed=false`
+  );
+  if (!structR.files.length) throw new Error('找不到 2026_structure 資料夾');
+  const structId = structR.files[0].id;
+
+  // 找 settings 子資料夾
+  const settingsR = await driveQuery(
+    `name='settings' and mimeType='application/vnd.google-apps.folder' and '${structId}' in parents and trashed=false`
+  );
+  if (!settingsR.files.length) throw new Error('找不到 settings 資料夾');
+  const settingsFolderId = settingsR.files[0].id;
+
+  // 列出所有 JSON
+  const files = await driveListFiles(settingsFolderId);
+  const promises = files
+    .filter(f => f.name.endsWith('.json') && f.name !== '__recent__.json')
+    .map(async f => {
+      const buf = await driveDownload(f.id);
+      const text = new TextDecoder().decode(buf);
+      const sym = f.name.replace('.json', '');
+      try {
+        settingsAll[sym] = JSON.parse(text);
+      } catch(e) {}
+    });
+  await Promise.all(promises);
+}
+
+// ═══════════════════════════════════════════════════
+// 股票選單
+// ═══════════════════════════════════════════════════
+function populateSymbolSelect() {
+  const sel = document.getElementById('sym-select');
+  const symbols = Object.keys(settingsAll).sort();
+
+  // 取得最近使用的股票（從 behavior_state）
+  const recent = Object.keys(behaviorState).filter(k => k !== '_meta').slice(0, 5);
+
+  symbols.forEach(sym => {
+    const opt = document.createElement('option');
+    opt.value = sym;
+    const beh = behaviorState[sym];
+    const meta = beh && beh._meta;
+    const bestDiv = meta && meta.best_div;
+    opt.textContent = `${sym}${bestDiv ? '  ('+bestDiv+'等份)' : ''}`;
+    sel.appendChild(opt);
+  });
+
+  if (recent.length) {
+    const val = recent[0];
+    if (symbols.includes(val)) sel.value = val;
+  }
+}
+
+function onSymbolChange() {
+  currentSymbol = document.getElementById('sym-select').value;
+}
+
+// ═══════════════════════════════════════════════════
+// 載入股票
+// ═══════════════════════════════════════════════════
+async function loadSymbol() {
+  const sym = document.getElementById('sym-select').value;
+  if (!sym) { setStatus('請先選擇股票', true); return; }
+  currentSymbol = sym;
+  await renderAll();
+}
+
+function switchTF(tf, label) {
+  currentTF = tf;
+  document.querySelectorAll('.tf-tab').forEach((t,i) => {
+    t.classList.toggle('active', ['1D','1min','5min'][i] === tf);
+  });
+  if (currentSymbol) renderAll();
+}
+
+async function renderAll() {
+  if (!currentSymbol || !sqlDb) return;
+  showLoading('繪製圖表中…');
+  try {
+    renderBehaviorBar(currentSymbol);
+    await renderCharts(currentSymbol);
+    document.getElementById('behavior-bar').style.display = 'block';
+    document.getElementById('chart-area').style.display = 'block';
+    hideLoading();
+    setStatus(`${currentSymbol}  ${currentTF}  ${new Date().toLocaleTimeString('zh-TW')}`);
+  } catch(e) {
+    hideLoading();
+    setStatus('繪製失敗: ' + e.message, true);
+    console.error(e);
+  }
+}
+
+// ═══════════════════════════════════════════════════
+// 行為列渲染
+// ═══════════════════════════════════════════════════
+function renderBehaviorBar(sym) {
+  const bar = document.getElementById('behavior-bar');
+  const symBeh = behaviorState[sym] || {};
+  const bestDiv = (symBeh._meta || {}).best_div || '16';
+
+  const rows = [];
+
+  for (const zoneType of ['T', 'S']) {
+    const key = `g0_d${bestDiv}_${zoneType}`;
+    const beh = symBeh[key];
+    if (!beh) continue;
+
+    const cl  = beh.current_line || '—';
+    const nu  = beh.next_up || '';
+    const nd  = beh.next_dn || '';
+    const nuUp = beh.next_up_approx_up;
+    const nuDn = beh.next_up_approx_dn;
+    const ndUp = beh.dn_approx_up || beh.next_dn_approx_up;
+    const ndDn = beh.next_dn_approx_dn;
+    const le   = beh.last_event || '';
+    const leb  = beh.last_event_bar ? beh.last_event_bar.slice(11,16) : '';
+
+    const zClass = zoneType === 'T' ? 'zone-t' : 'zone-s';
+    let html = `<div class="beh-row">`;
+    html += `<span class="${zClass}">${zoneType}${bestDiv}</span>`;
+    html += `<span class="beh-label">當前</span><span class="beh-line">${cl}</span>`;
+
+    if (nu) {
+      const priceStr = (nuUp != null && nuDn != null)
+        ? ` <span class="beh-price">(${fmt(nuUp)} ${fmt(nuDn)})</span>` : '';
+      html += `<span class="beh-sep">｜</span><span class="beh-up">${nu}</span>${priceStr}`;
+    }
+    if (nd) {
+      const priceStr = (ndUp != null && ndDn != null)
+        ? ` <span class="beh-price">(${fmt(ndUp)} ${fmt(ndDn)})</span>` : '';
+      html += `<span class="beh-label"> 或 </span><span class="beh-dn">${nd}</span>${priceStr}`;
+    }
+    if (le) {
+      html += `<span class="beh-sep">｜</span><span class="beh-label">上次</span>`;
+      html += `<span class="beh-last">${le}</span>`;
+      if (leb) html += `<span class="beh-price">${leb}</span>`;
+    }
+
+    // 舊目的
+    if (beh.is_legacy_goal && beh.legacy_label_up) {
+      html += `<br><span style="color:#bb86fc;font-size:11px">★舊目的 ${beh.legacy_move_type||''} `;
+      html += `<span class="beh-up">${beh.legacy_label_up}</span>`;
+      if (beh.legacy_up_approx_up != null) html += ` <span class="beh-price">(${fmt(beh.legacy_up_approx_up)} ${fmt(beh.legacy_up_approx_dn)})</span>`;
+      if (beh.legacy_label_dn) {
+        html += ` / <span class="beh-dn">${beh.legacy_label_dn}</span>`;
+        if (beh.legacy_dn_approx_up != null) html += ` <span class="beh-price">(${fmt(beh.legacy_dn_approx_up)} ${fmt(beh.legacy_dn_approx_dn)})</span>`;
+      }
+      html += `</span>`;
+    }
+    html += `</div>`;
+    rows.push(html);
+  }
+
+  // 現價
+  const lastPrice = getLastPrice(sym);
+  let priceHtml = '';
+  if (lastPrice != null) {
+    priceHtml = `<div class="beh-row" style="margin-top:4px">
+      <span class="beh-label">現價</span>
+      <span class="beh-price-now">${fmt(lastPrice)}</span>
+    </div>`;
+  }
+
+  bar.innerHTML = rows.join('<div style="height:4px"></div>') + priceHtml;
+}
+
+function getLastPrice(sym) {
+  if (!sqlDb) return null;
+  try {
+    const table = currentTF === '1D' ? 'kbar_daily' : 'kbar_1min';
+    const res = sqlDb.exec(
+      `SELECT close FROM ${table} WHERE symbol=? ORDER BY ts DESC LIMIT 1`,
+      [sym]
+    );
+    return res.length && res[0].values.length ? res[0].values[0][0] : null;
+  } catch(e) { return null; }
+}
+
+// ═══════════════════════════════════════════════════
+// K 線圖渲染
+// ═══════════════════════════════════════════════════
+async function renderCharts(sym) {
+  // 清除舊圖
+  chartInstances.forEach(c => c.destroy());
+  chartInstances = [];
+  const area = document.getElementById('chart-area');
+  area.innerHTML = '';
+
+  const s = settingsAll[sym] || {};
+  const gh = parseFloat(s.g0_high);
+  const gl = parseFloat(s.g0_low);
+  if (!gh || !gl) { setStatus(`${sym} 尚未設定 High/Low`, true); return; }
+
+  // 讀 K 棒
+  const bars = queryBars(sym, currentTF);
+  if (!bars.length) { setStatus(`${sym} 無 ${currentTF} K 棒資料`); return; }
+
+  const symBeh = behaviorState[sym] || {};
+  const bestDiv = (symBeh._meta || {}).best_div || '16';
+
+  for (const div of [12, 16]) {
+    const struct = calcStructure(gh, gl, div);
+
+    for (const zoneType of ['T', 'S']) {
+      const layer = zoneType === 'T' ? struct.sub3 : struct.sub6;
+      const bkey  = `g0_d${div}_${zoneType}`;
+      const beh   = symBeh[bkey] || {};
+
+      // 取當前區間 top/bottom
+      const timeline = beh.zone_timeline || (s[`g0_d${div}_b${zoneType==='T'?0:1}`] || {})._checkpoint?.zone_timeline || [];
+      const activeSeg = [...timeline].reverse().find(seg => !seg.valid_until) || {};
+      const zTop = parseFloat(activeSeg.top || beh.zone_top || 0);
+      const zBot = parseFloat(activeSeg.bottom || beh.zone_bottom || 0);
+
+      // 格線
+      const gridLines = buildGridLines(gh, gl, div, layer, zTop, zBot);
+
+      const isBestDiv = String(div) === String(bestDiv);
+      const card = buildChartCard(sym, div, zoneType, bars, gridLines, beh, isBestDiv);
+      area.appendChild(card.el);
+      chartInstances.push(card.chart);
+    }
+  }
+}
+
+function queryBars(sym, tf) {
+  const table = tf === '1D' ? 'kbar_daily' : 'kbar_1min';
+  const limit  = tf === '1D' ? 120 : 200;
+  try {
+    const res = sqlDb.exec(
+      `SELECT ts, open, high, low, close, volume FROM ${table}
+       WHERE symbol=? ORDER BY ts DESC LIMIT ${limit}`,
+      [sym]
+    );
+    if (!res.length) return [];
+    return res[0].values.map(r => ({
+      ts: r[0], open: r[1], high: r[2], low: r[3], close: r[4], volume: r[5]
+    })).reverse();
+  } catch(e) { console.error(e); return []; }
+}
+
+// ═══════════════════════════════════════════════════
+// Chart.js K 線圖
+// ═══════════════════════════════════════════════════
+function buildChartCard(sym, div, zoneType, bars, gridLines, beh, isBestDiv) {
+  const el = document.createElement('div');
+  el.className = 'chart-card';
+
+  const dir = beh.zone_direction || '—';
+  const dirSign = dir === 'up' ? '▲' : dir === 'down' ? '▼' : '';
+  const star = isBestDiv ? ' ★' : '';
+  el.innerHTML = `
+    <div class="chart-title">
+      <span>${sym}  ${div}等份  <span class="${zoneType==='T'?'zone-t':'zone-s'}">${zoneType}</span>${star}</span>
+      <span>${dirSign} ${beh.current_line || ''}</span>
+    </div>
+    <div class="chart-canvas-wrap">
+      <canvas id="cv-${div}-${zoneType}"></canvas>
+    </div>`;
+
+  // 等 DOM 插入後再建 Chart
+  setTimeout(() => {
+    const canvas = el.querySelector('canvas');
+    if (!canvas) return;
+    const chart = buildCandlestickChart(canvas, bars, gridLines, beh);
+    chartInstances.push(chart);
+  }, 0);
+
+  // 回傳假 chart（真正的在 setTimeout 裡建）
+  return { el, chart: { destroy: () => {} } };
+}
+
+function buildCandlestickChart(canvas, bars, gridLines, beh) {
+  const labels = bars.map(b => {
+    const d = new Date(b.ts);
+    if (currentTF === '1D') return `${d.getMonth()+1}/${d.getDate()}`;
+    return `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
+  });
+
+  // 用 Chart.js Bar chart 模擬 K 線（每根包含 open/close 實體 + high/low 影線）
+  const ctx = canvas.getContext('2d');
+
+  // 價格範圍
+  const allHigh = Math.max(...bars.map(b=>b.high));
+  const allLow  = Math.min(...bars.map(b=>b.low));
+  const pad = (allHigh - allLow) * 0.08;
+
+  // 格線 annotation（用 Plugin 手動畫）
+  const gridPlugin = {
+    id: 'gridLines',
+    afterDraw(chart) {
+      const { ctx, chartArea, scales } = chart;
+      const yScale = scales.y;
+      ctx.save();
+      gridLines.forEach(g => {
+        const y = yScale.getPixelForValue(g.price);
+        if (y < chartArea.top || y > chartArea.bottom) return;
+        ctx.beginPath();
+        ctx.moveTo(chartArea.left, y);
+        ctx.lineTo(chartArea.right, y);
+        ctx.strokeStyle = g.color;
+        ctx.lineWidth   = g.width;
+        ctx.setLineDash(g.dash);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // 標籤
+        if (g.label) {
+          ctx.fillStyle = g.labelColor || g.color;
+          ctx.font = '8px monospace';
+          ctx.textAlign = 'right';
+          ctx.fillText(g.label, chartArea.right - 2, y - 2);
+        }
+      });
+
+      // 行為目標線高亮
+      const now = beh.next_up_approx_dn;
+      const ndn = beh.next_dn_approx_up;
+      [[now, '#F9F900', beh.next_up], [ndn, '#A8FF24', beh.next_dn]].forEach(([price, color, name]) => {
+        if (!price) return;
+        const y = yScale.getPixelForValue(price);
+        if (y < chartArea.top || y > chartArea.bottom) return;
+        ctx.beginPath();
+        ctx.moveTo(chartArea.left, y);
+        ctx.lineTo(chartArea.right, y);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([4,3]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        if (name) {
+          ctx.fillStyle = color;
+          ctx.font = 'bold 9px monospace';
+          ctx.textAlign = 'left';
+          ctx.fillText(name, chartArea.left + 4, y - 2);
+        }
+      });
+
+      ctx.restore();
+    }
+  };
+
+  // K 棒 Plugin（手動繪製 candlestick）
+  const candlePlugin = {
+    id: 'candle',
+    afterDatasetsDraw(chart) {
+      const { ctx, chartArea, scales } = chart;
+      const xScale = scales.x;
+      const yScale = scales.y;
+      ctx.save();
+      const n = bars.length;
+      const barW = Math.max(2, (chartArea.width / n) * 0.6);
+
+      bars.forEach((b, i) => {
+        const x  = xScale.getPixelForValue(i);
+        const yO = yScale.getPixelForValue(b.open);
+        const yC = yScale.getPixelForValue(b.close);
+        const yH = yScale.getPixelForValue(b.high);
+        const yL = yScale.getPixelForValue(b.low);
+        const isUp = b.close >= b.open;
+        const color = isUp ? '#ef5350' : '#26c6da';
+
+        // 影線
+        ctx.beginPath();
+        ctx.moveTo(x, yH);
+        ctx.lineTo(x, yL);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        // 實體
+        const top = Math.min(yO, yC);
+        const ht  = Math.max(1, Math.abs(yO - yC));
+        ctx.fillStyle = color;
+        ctx.fillRect(x - barW/2, top, barW, ht);
+      });
+      ctx.restore();
+    }
+  };
+
+  const chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        data: bars.map(b => (b.high + b.low) / 2),
+        borderColor: 'transparent',
+        pointRadius: 0,
+        fill: false,
+      }]
+    },
+    options: {
+      animation: false,
+      responsive: true,
+      maintainAspectRatio: false,
+      layout: { padding: { right: 48 } },
+      scales: {
+        x: {
+          ticks: { color: '#5a6380', font: { size: 9 }, maxTicksLimit: 8 },
+          grid: { color: '#1e2232' },
+        },
+        y: {
+          position: 'right',
+          min: allLow - pad,
+          max: allHigh + pad,
+          ticks: { color: '#5a6380', font: { size: 9 }, maxTicksLimit: 6 },
+          grid: { color: '#1e2232' },
+        }
+      },
+      plugins: { legend: { display: false }, tooltip: { enabled: false } },
+    },
+    plugins: [gridPlugin, candlePlugin],
+  });
+
+  return chart;
+}
+
+// ═══════════════════════════════════════════════════
+// 格線計算（移植自 structure_calculation.py）
+// ═══════════════════════════════════════════════════
+function rdFloor(v) {
+  // round_down：無條件捨去到小數點後1位
+  return Math.floor(parseFloat(v) * 10) / 10;
+}
+function rd(v) {
+  return rdFloor(Math.round(parseFloat(v) * 100) / 100);
+}
+function approxUp(val, upper) { return rd(upper - (upper - val) * APPROX_RATIO); }
+function approxDn(lower, val) { return rd(lower + (val - lower) * APPROX_RATIO); }
+
+function buildLayer(vLow, vHigh, nDiv) {
+  const step = (vHigh - vLow) / nDiv;
+  const items = [];
+  for (let i = 0; i <= nDiv; i++) {
+    items.push({ value: rd(vLow + step * i), index: i, approx_up: null, approx_dn: null });
+  }
+  for (let j = 0; j < items.length - 1; j++) {
+    const lo = items[j].value, hi = items[j+1].value;
+    items[j].approx_up    = approxUp(lo, hi);
+    items[j+1].approx_dn  = approxDn(lo, hi);
+  }
+  return items;
+}
+
+function calcStructure(vHigh, vLow, divisions) {
+  if (vHigh <= vLow) return { main: [], sub3: [], sub6: [] };
+  return {
+    main: buildLayer(vLow, vHigh, divisions),
+    sub3: buildLayer(vLow, vHigh, divisions * 3),
+    sub6: buildLayer(vLow, vHigh, divisions * 6),
+  };
+}
+
+function buildGridLines(gh, gl, div, layer, zTop, zBot) {
+  const priceRange = gh - gl;
+  const tol = priceRange * 0.0001;
+  const half   = gl + priceRange / 2;
+  const third1 = gl + priceRange / 3;
+  const third2 = gl + priceRange * 2 / 3;
+  const isMain = div === 12
+    ? ['rgba(30,120,220,0.7)', 'rgba(20,90,190,0.7)', 'rgba(20,90,190,0.5)']
+    : ['rgba(120,50,200,0.7)', 'rgba(100,30,180,0.7)', 'rgba(100,30,180,0.5)'];
+
+  return layer.map(item => {
+    const p = item.value;
+    let color = isMain[2], width = 1, dash = [2, 3], label = null, labelColor = null;
+    const isHalf   = Math.abs(p - half)   < tol;
+    const isThird  = Math.abs(p - third1) < tol || Math.abs(p - third2) < tol;
+    const isEdge   = p === rd(gh) || p === rd(gl);
+
+    if (isHalf)  { color = 'rgba(210,30,30,0.9)'; width = 1.5; dash = []; }
+    else if (isThird) { color = 'rgba(30,30,30,0.9)'; width = 1.5; dash = []; }
+    else if (isEdge)  { color = isMain[0]; width = 1; dash = []; }
+
+    // 在區間範圍內的線加標籤
+    if (zTop && zBot && p >= zBot * 0.999 && p <= zTop * 1.001) {
+      label = p.toFixed(1);
+      labelColor = color;
+    }
+
+    return { price: p, color, width, dash, label, labelColor };
+  });
+}
+
+// ═══════════════════════════════════════════════════
+// UI 工具
+// ═══════════════════════════════════════════════════
+function fmt(v) {
+  if (v == null) return '—';
+  const f = parseFloat(v);
+  return f === Math.floor(f) ? f.toFixed(0) : f.toFixed(1);
+}
+function setStatus(msg, isErr) {
+  const el = document.getElementById('status-bar');
+  el.textContent = msg;
+  el.className = isErr ? 'err' : '';
+}
+function showLoading(msg) {
+  document.getElementById('loading').classList.add('show');
+  setLoadingMsg(msg);
+}
+function setLoadingMsg(msg) {
+  document.getElementById('loading-msg').textContent = msg;
+}
+function hideLoading() {
+  document.getElementById('loading').classList.remove('show');
+}
+
+// ═══════════════════════════════════════════════════
+// 啟動
+// ═══════════════════════════════════════════════════
+loadGIS();
+</script>
+</body>
+</html>
