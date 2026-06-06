@@ -24,7 +24,7 @@ body{background:var(--bg);color:var(--text);font-family:'Helvetica Neue',sans-se
 #btn-signin{background:#fff;color:#333;border:1px solid #d0d5de;border-radius:8px;padding:12px 24px;font-size:17px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:8px;box-shadow:0 1px 4px rgba(0,0,0,.12);}
 #price-display{background:var(--surface);border-bottom:2px solid var(--border);padding:6px 14px;display:none;align-items:center;gap:8px;}
 #price-label{font-size:13px;color:var(--muted);}
-#price-value{font-size:28px;font-weight:800;color:#e65100;}
+#price-value{font-size:24px;font-weight:800;color:#e65100;}
 #tf-tabs{display:none;gap:4px;padding:6px 12px 0;border-bottom:1px solid var(--border);background:var(--surface);}
 .tf-tab{padding:5px 14px;border-radius:5px 5px 0 0;font-size:14px;cursor:pointer;color:var(--muted);background:transparent;border:none;}
 .tf-tab.active{background:var(--bg);color:#1565c0;font-weight:700;border-top:2px solid #1565c0;}
@@ -131,11 +131,13 @@ async function loadStockNames(){
     const wb=XLSX.read(new Uint8Array(buf),{type:'array'});
     const ws=wb.Sheets[wb.SheetNames[0]];
     const rows=XLSX.utils.sheet_to_json(ws,{header:1});
-    // 假設第一欄是股票代號，第二欄是公司名稱
-    rows.forEach(row=>{
+    // A欄=公司代號, B欄=公司名稱, 第1行是標題跳過
+    rows.slice(1).forEach(row=>{
       if(!row[0])return;
       const sym=String(row[0]).trim();
-      const name=String(row[1]||'').trim();
+      const fullName=String(row[1]||'').trim();
+      // 取前4個字（通常足以識別公司）
+      const name=fullName.slice(0,4);
       if(sym&&name)stockNames[sym]=name;
     });
     console.log('股票名稱載入完成，共',Object.keys(stockNames).length,'筆');
