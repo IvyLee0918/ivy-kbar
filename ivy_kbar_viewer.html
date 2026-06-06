@@ -131,16 +131,20 @@ async function loadStockNames(){
     const wb=XLSX.read(new Uint8Array(buf),{type:'array'});
     const ws=wb.Sheets[wb.SheetNames[0]];
     const rows=XLSX.utils.sheet_to_json(ws,{header:1});
+    console.log('xlsx rows[0]:', JSON.stringify(rows[0]));
+    console.log('xlsx rows[1]:', JSON.stringify(rows[1]));
+    console.log('xlsx rows[2]:', JSON.stringify(rows[2]));
     // A欄=公司代號, B欄=公司名稱, 第1行是標題跳過
     rows.slice(1).forEach(row=>{
       if(!row[0])return;
       const sym=String(row[0]).trim();
       const fullName=String(row[1]||'').trim();
-      // 取前4個字（通常足以識別公司）
       const name=fullName.slice(0,4);
       if(sym&&name)stockNames[sym]=name;
     });
-    console.log('股票名稱載入完成，共',Object.keys(stockNames).length,'筆');
+    const total=Object.keys(stockNames).length;
+    console.log('股票名稱載入完成，共',total,'筆，範例:',JSON.stringify(Object.entries(stockNames).slice(0,3)));
+    setStatus('股票名稱載入: '+total+'筆');
   }catch(e){
     console.warn('stock_id.xlsx 載入失敗:',e.message);
     setStatus('股票名稱載入失敗: '+e.message, true);
