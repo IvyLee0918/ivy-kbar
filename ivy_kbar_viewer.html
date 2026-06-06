@@ -169,30 +169,50 @@ async function renderAll(){
 }
 
 // ── 行為列 ──
+// findLayerValue：從格線層找最接近 approx_dn 的格線實際 value
+function findLayerValue(layer, approxDn){
+  if(!layer||approxDn==null)return null;
+  let best=null,bestDiff=Infinity;
+  layer.forEach(item=>{
+    if(item.approx_dn==null)return;
+    const diff=Math.abs(item.approx_dn-parseFloat(approxDn));
+    if(diff<bestDiff){bestDiff=diff;best=item.value;}
+  });
+  return best;
+}
 function renderBehBar(sym){
   const bar=document.getElementById('behavior-bar');
   const sb=behaviorState[sym]||{};
   const bd=(sb._meta||{}).best_div||'16';
-  function cell(beh){
+  // 建格線層供反查 current_line 實際值
+  const s=settingsAll[sym]||{};
+  const gh=parseFloat(s.g0_high),gl=parseFloat(s.g0_low);
+  let layerT=null,layerS=null;
+  if(gh&&gl){
+    const struct=calcStruct(gh,gl,parseInt(bd));
+    layerT=struct.sub3;layerS=struct.sub6;
+  }
+  function cell(beh,layer){
     const cl=beh.current_line||'—',nu=beh.next_up||'',nd=beh.next_dn||'';
     const nuV=beh.next_up_value,nuU=beh.next_up_approx_up,nuD=beh.next_up_approx_dn;
     const ndV=beh.next_dn_value,ndU=beh.next_dn_approx_up,ndD=beh.next_dn_approx_dn;
-    // current_line 實際值（approx_up 和 approx_dn 的目標格線 value）
-    // behavior_state 有 current_approx_up / current_approx_dn
     const caU=beh.current_approx_up,caD=beh.current_approx_dn;
     const le=beh.last_event||'',leb=beh.last_event_bar?beh.last_event_bar.slice(11,16):'';
-    // current_line：顯示格式 "L3 xx.x (approx_up approx_dn)"
-    let clPrice='';
-    if(caU!=null&&caD!=null) clPrice=' <span class="beh-price">('+fmt(caU)+' '+fmt(caD)+')</span>';
-    let h='<span class="beh-curr-label">當前</span> <span class="beh-curr-line">'+cl+'</span>'+clPrice+'<br>';
+    // current_line 實際值：從格線層反查 approx_dn 對應的 value
+    const clV=findLayerValue(layer,caD);
+    let clStr='';
+    if(clV!=null) clStr=' <span style="color:#1565c0;font-weight:700;font-size:13px">'+fmt(clV)+'</span>';
+    let clApprox='';
+    if(caU!=null&&caD!=null) clApprox=' <span class="beh-price">('+fmt(caU)+' '+fmt(caD)+')</span>';
+    let h='<span class="beh-curr-label">當前</span> <span class="beh-curr-line">'+cl+'</span>'+clStr+clApprox+'<br>';
     // 目的：name value (approx_up approx_dn)
     if(nu){
-      const vStr=nuV!=null?' <span class="beh-curr-line" style="font-size:13px">'+fmt(nuV)+'</span>':'';
+      const vStr=nuV!=null?' <span style="font-weight:700;font-size:13px;color:#333">'+fmt(nuV)+'</span>':'';
       const p=(nuU!=null&&nuD!=null)?'<span class="beh-price">('+fmt(nuU)+' '+fmt(nuD)+')</span>':'';
       h+='<span class="beh-up">'+nu+'</span>'+vStr+' '+p+'<br>';
     }
     if(nd){
-      const vStr=ndV!=null?' <span class="beh-curr-line" style="font-size:13px">'+fmt(ndV)+'</span>':'';
+      const vStr=ndV!=null?' <span style="font-weight:700;font-size:13px;color:#333">'+fmt(ndV)+'</span>':'';
       const p=(ndU!=null&&ndD!=null)?'<span class="beh-price">('+fmt(ndU)+' '+fmt(ndD)+')</span>':'';
       h+='<span class="beh-dn">'+nd+'</span>'+vStr+' '+p+'<br>';
     }
@@ -200,7 +220,7 @@ function renderBehBar(sym){
     return h;
   }
   const tBeh=sb['g0_d'+bd+'_T']||{},sBeh=sb['g0_d'+bd+'_S']||{};
-  bar.innerHTML='<table class="beh-table"><thead><tr><th class="th-t">T'+bd+'</th><th class="th-s">S'+bd+'</th></tr></thead><tbody><tr><td>'+cell(tBeh)+'</td><td>'+cell(sBeh)+'</td></tr></tbody></table>';
+  bar.innerHTML='<table class="beh-table"><thead><tr><th class="th-t">T'+bd+'</th><th class="th-s">S'+bd+'</th></tr></thead><tbody><tr><td>'+cell(tBeh,layerT)+'</td><td>'+cell(sBeh,layerS)+'</td></tr></tbody></table>';
 }
 
 // ── 現價 ──
@@ -386,14 +406,19 @@ function buildChart(canvas,bars,gridLines,beh){
       ctx.beginPath();ctx.moveTo(chartArea.left,py);ctx.lineTo(chartArea.right,py);
       ctx.strokeStyle=color;ctx.lineWidth=2;ctx.setLineDash([6,3]);ctx.stroke();ctx.setLineDash([]);
       if(name){
-        ctx.font='bold 12px sans-serif';
-        const tw=ctx.measureText(name).width;
+        // 標籤格式：「強軋空 (87.9 86.8)」
+        const aUp2=price===tUp?beh.next_up_approx_up:beh.next_dn_approx_up;
+        const aDn2=price===tUp?beh.next_up_approx_dn:beh.next_dn_approx_dn;
+        const approxStr=(aUp2!=null&&aDn2!=null)?(' ('+fmt(aUp2)+' '+fmt(aDn2)+')'):'';
+        const fullLabel=name+approxStr;
+        ctx.font='bold 11px sans-serif';
+        const tw=ctx.measureText(fullLabel).width;
         ctx.fillStyle=color==='#e65100'?'#fff3e0':'#f1f8e9';
-        ctx.fillRect(chartArea.left+4,py-14,tw+8,14);
+        ctx.fillRect(chartArea.left+4,py-14,tw+10,14);
         ctx.strokeStyle=color;ctx.lineWidth=1;
-        ctx.strokeRect(chartArea.left+4,py-14,tw+8,14);
+        ctx.strokeRect(chartArea.left+4,py-14,tw+10,14);
         ctx.fillStyle=color;ctx.textAlign='left';
-        ctx.fillText(name,chartArea.left+8,py-3);
+        ctx.fillText(fullLabel,chartArea.left+8,py-3);
       }
     });
     // current_line 黑色虛線（當前所在 L 線）
