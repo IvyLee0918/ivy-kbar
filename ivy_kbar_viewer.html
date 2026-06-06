@@ -406,11 +406,14 @@ function buildChart(canvas,bars,gridLines,beh){
       ctx.beginPath();ctx.moveTo(chartArea.left,py);ctx.lineTo(chartArea.right,py);
       ctx.strokeStyle=color;ctx.lineWidth=2;ctx.setLineDash([6,3]);ctx.stroke();ctx.setLineDash([]);
       if(name){
-        // 標籤格式：「強軋空 (87.9 86.8)」
-        const aUp2=price===tUp?beh.next_up_approx_up:beh.next_dn_approx_up;
-        const aDn2=price===tUp?beh.next_up_approx_dn:beh.next_dn_approx_dn;
+        // 標籤格式：「多發動 82.3 (82.6 82)」— 名稱 + 實際值 + 近似值
+        const isUp=price===tUp;
+        const val2=isUp?beh.next_up_value:beh.next_dn_value;
+        const aUp2=isUp?beh.next_up_approx_up:beh.next_dn_approx_up;
+        const aDn2=isUp?beh.next_up_approx_dn:beh.next_dn_approx_dn;
+        const valStr=val2!=null?(' '+fmt(val2)):'';
         const approxStr=(aUp2!=null&&aDn2!=null)?(' ('+fmt(aUp2)+' '+fmt(aDn2)+')'):'';
-        const fullLabel=name+approxStr;
+        const fullLabel=name+valStr+approxStr;
         ctx.font='bold 11px sans-serif';
         const tw=ctx.measureText(fullLabel).width;
         ctx.fillStyle=color==='#e65100'?'#fff3e0':'#f1f8e9';
@@ -499,12 +502,9 @@ function fillAxis(cardEl,chart,gridLines,beh){
   }).sort((a,b)=>b.price-a.price);
 
   ax.innerHTML='';
-  // 最小間距：避免數字重疊（14px）
-  let lastTop=-99;
+  // 全部顯示，不跳過任何格線（字型 10px，間距由格線密度決定）
   sorted.forEach(t=>{
     const pct=(maxY-t.price)/range,top=pct*axH;
-    if(top-lastTop<13&&lastTop>0)return; // 太密就跳過
-    lastTop=top;
     const d=document.createElement('div');d.className=t.cls;
     d.style.top=(top-7)+'px';
     d.textContent=parseFloat(t.price).toFixed(1);
