@@ -154,7 +154,7 @@
   }
   canvas { width: 100% !important; height: 100% !important; }
   .price-axis {
-    width: 44px; flex-shrink: 0;
+    width: 52px; flex-shrink: 0;
     position: relative;
     background: #f8f9fc;
     border-left: 1px solid #dde;
@@ -441,7 +441,7 @@ async function loadSymbol() {
 function switchTF(tf, label) {
   currentTF = tf;
   document.querySelectorAll('.tf-tab').forEach((t,i) => {
-    t.classList.toggle('active', ['1D','5min','30min'][i] === tf);
+    t.classList.toggle('active', ['1D','30min','5min'][i] === tf);
   });
   if (currentSymbol) renderAll();
 }
@@ -632,12 +632,15 @@ function queryBars(sym, tf) {
 // N分K resample（closed=right, label=right，台股標準）
 // 例：5分K → 09:05 涵蓋 09:01~09:05
 function resampleNmin(bars, n) {
+  // closed=right, label=right（台股標準）
+  // 09:05 包含 09:01~09:05；09:10 包含 09:06~09:10
   const buckets = {};
   bars.forEach(b => {
     const d = new Date(b.ts);
     const mins = d.getMinutes();
-    // 右閉：ceil 到下一個 n 的倍數
-    const roundedMins = Math.ceil((mins + 1) / n) * n;
+    // ceil(mins/n)*n：09:05 → ceil(5/5)*5=5 → label 09:05 ✅
+    //                 09:06 → ceil(6/5)*5=10 → label 09:10 ✅
+    const roundedMins = mins === 0 ? 0 : Math.ceil(mins / n) * n;
     const aligned = new Date(d);
     if (roundedMins >= 60) {
       aligned.setMinutes(roundedMins - 60);
@@ -698,6 +701,8 @@ function buildChartCard(sym, div, zoneType, bars, gridLines, beh, isBestDiv) {
 }
 
 // 填右側價格軸標籤
+// 格線值來自 gridLines（settings.json 的 g0_high/g0_low 計算）
+// 目標線值直接從 beh 讀（behavior_state.json，電腦上 round_down 算好的數值）
 function fillPriceAxis(cardEl, chart, gridLines, beh) {
   const axisEl = cardEl.querySelector('.price-axis');
   if (!axisEl || !chart || !chart.scales || !chart.scales.y) return;
@@ -708,62 +713,61 @@ function fillPriceAxis(cardEl, chart, gridLines, beh) {
   const range = maxY - minY;
   if (!range) return;
 
-  // 收集目標線價格
-  const targetUp = beh.next_up_approx_dn;
-  const targetDn = beh.next_dn_approx_up;
-
-  // 過濾在範圍內的格線，只顯示有意義的（主格線 + 特殊線 + 目標線）
   const ticks = [];
-
-  // 從 gridLines 挑出要顯示的：是 edge/half/third，或在區間內有標籤的
   const priceRange = Math.max(...gridLines.map(g=>g.price)) - Math.min(...gridLines.map(g=>g.price));
-  const half   = Math.min(...gridLines.map(g=>g.price)) + priceRange / 2;
-  const tol    = priceRange * 0.001;
+  const half = Math.min(...gridLines.map(g=>g.price)) + priceRange / 2;
+  const tol  = priceRange * 0.001;
 
+  // 格線：只顯示 edge（高低點/主格線邊界）和 half（半線）
+  // 數值直接用 gridLines 的 price（來自 settings.json 的 g0_high/g0_low）
   gridLines.forEach(g => {
     if (g.price < minY || g.price > maxY) return;
-    const isHalf  = Math.abs(g.price - half) < tol;
-    const isEdge  = g.width >= 1 && g.dash && g.dash.length === 0 && !isHalf;
-    const hasLbl  = !!g.label;
-    if (isHalf || isEdge || hasLbl) {
-      let cls = 'price-tick';
-      if (isHalf) cls += ' tick-half';
-      else if (isEdge) cls += ' tick-third';
-      ticks.push({ price: g.price, cls });
+    const isHalf = Math.abs(g.price - half) < tol;
+    // edge 判斷：實線（dash 為空陣列）
+    const isSolid = Array.isArray(g.dash) && g.dash.length === 0;
+    if (isHalf || isSolid) {
+      ticks.push({
+        price: g.price,
+        cls: 'price-tick' + (isHalf ? ' tick-half' : ' tick-third'),
+        label: null,
+      });
     }
   });
 
-  // 加目標線
-  if (targetUp && targetUp >= minY && targetUp <= maxY) {
-    ticks.push({ price: targetUp, cls: 'price-tick tick-target-up', label: beh.next_up ? beh.next_up : null });
+  // 行為目標線：直接用 behavior_state.json 的值（電腦端 round_down 算的）
+  const targetUp = beh.next_up_approx_dn;   // 往上觸發門檻（approx_dn）
+  const targetDn = beh.next_dn_approx_up;   // 往下觸發門檻（approx_up）
+  if (targetUp != null && targetUp >= minY && targetUp <= maxY) {
+    ticks.push({ price: targetUp, cls: 'price-tick tick-target-up', label: beh.next_up || null });
   }
-  if (targetDn && targetDn >= minY && targetDn <= maxY) {
-    ticks.push({ price: targetDn, cls: 'price-tick tick-target-dn', label: beh.next_dn ? beh.next_dn : null });
+  if (targetDn != null && targetDn >= minY && targetDn <= maxY) {
+    ticks.push({ price: targetDn, cls: 'price-tick tick-target-dn', label: beh.next_dn || null });
   }
 
-  // 排序（高→低）並去重
+  // 排序（高→低）去重
   const seen = new Set();
   const sorted = ticks
-    .filter(t => { const k = t.price.toFixed(1); if(seen.has(k)) return false; seen.add(k); return true; })
+    .filter(t => {
+      const k = parseFloat(t.price).toFixed(2);
+      if (seen.has(k)) return false;
+      seen.add(k); return true;
+    })
     .sort((a,b) => b.price - a.price);
 
-  // 用絕對定位方式放置（根據 Y 軸比例計算位置）
-  axisEl.style.position = 'relative';
   axisEl.innerHTML = '';
-  const axisH = axisEl.offsetHeight || 340;
+  const axisH = axisEl.getBoundingClientRect().height || 340;
 
   sorted.forEach(t => {
     const pct = (maxY - t.price) / range;
-    const top = pct * axisH;
-    const div = document.createElement('div');
-    div.className = t.cls;
-    div.style.position  = 'absolute';
-    div.style.right     = '3px';
-    div.style.top       = `${top - 7}px`;
-    div.style.fontSize  = '11px';
-    const displayTxt = t.label ? t.label : t.price.toFixed(1);
-    div.textContent = displayTxt;
-    axisEl.appendChild(div);
+    const topPx = pct * axisH;
+    const el = document.createElement('div');
+    el.className = t.cls;
+    el.style.cssText = `position:absolute; left:2px; right:2px; top:${topPx - 7}px; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;`;
+    // 數值：直接用原始 price（不再用 toFixed，保留原始精度）
+    el.textContent = t.label
+      ? t.label + ' ' + parseFloat(t.price).toFixed(1)
+      : parseFloat(t.price).toFixed(1);
+    axisEl.appendChild(el);
   });
 }
 
@@ -801,13 +805,7 @@ function buildCandlestickChart(canvas, bars, gridLines, beh) {
         ctx.stroke();
         ctx.setLineDash([]);
 
-        // 標籤
-        if (g.label) {
-          ctx.fillStyle = g.labelColor || '#444444';
-          ctx.font = '10px monospace';
-          ctx.textAlign = 'right';
-          ctx.fillText(g.label, chartArea.right - 2, y - 2);
-        }
+        // 格線標籤只在右側 price-axis 顯示，K 棒區不畫
       });
 
       // 行為目標線高亮
@@ -985,11 +983,7 @@ function buildGridLines(gh, gl, div, layer, zTop, zBot) {
     else if (isThird) { color = 'rgba(80,80,80,0.8)'; width = 1.2; dash = []; }
     else if (isEdge)  { color = isMain[0]; width = 1; dash = []; }
 
-    // 在區間範圍內的線加標籤
-    if (zTop && zBot && p >= zBot * 0.999 && p <= zTop * 1.001) {
-      label = p.toFixed(1);
-      labelColor = '#444444';
-    }
+    // 標籤由 price-axis 處理，此處不設
 
     return { price: p, color, width, dash, label, labelColor };
   });
