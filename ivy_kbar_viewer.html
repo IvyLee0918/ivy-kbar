@@ -220,11 +220,11 @@ const CLIENT_ID   = '298194095133-phtnomlmc73hej2bat5a38r7132cqmgh.apps.googleus
 const SCOPES      = 'https://www.googleapis.com/auth/drive.readonly';
 const APPROX_RATIO = 0.833;
 
-// Drive 路徑（根據截圖）
-const DRIVE_PATHS = {
-  kbar:     { folder: 'KBar',           file: 'kbar.db' },
-  behavior: { folder: '2026_structure', file: 'behavior_state.json' },
-  settings: { folder: 'settings' },   // 在 2026_structure 裡
+// Drive 資料夾 ID（固定寫死，不靠名稱搜尋）
+const FOLDER_IDS = {
+  kbar:          '1wPdF8MTHA0tLwxIMwqjnrP_qCAQFs3Ot',  // KBar/
+  structure:     '1N6sZJ7qA6xcOl2wA42fu4buflXWcXfGW',  // 2026_structure/
+  settings: null,  // 初始化時動態找
 };
 
 // ═══════════════════════════════════════════════════
@@ -277,14 +277,16 @@ async function initApp() {
     const SQL = await initSqlJs({
       locateFile: f => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.2/${f}`
     });
+
     setLoadingMsg('下載 kbar.db…（首次約 5–10 秒）');
-    const dbBuf = await driveDownloadByPath('KBar', 'kbar.db');
+    const kbarFileId = await driveGetFileInFolder(FOLDER_IDS.kbar, 'kbar.db');
+    const dbBuf = await driveDownload(kbarFileId);
     sqlDb = new SQL.Database(new Uint8Array(dbBuf));
-    setStatus('kbar.db 載入完成');
 
     setLoadingMsg('讀取 behavior_state…');
-    const behText = await driveDownloadTextByPath('2026_structure', 'behavior_state.json');
-    behaviorState = JSON.parse(behText);
+    const behFileId = await driveGetFileInFolder(FOLDER_IDS.structure, 'behavior_state.json');
+    const behBuf = await driveDownload(behFileId);
+    behaviorState = JSON.parse(new TextDecoder().decode(behBuf));
 
     setLoadingMsg('讀取 settings…');
     await loadAllSettings();
@@ -300,59 +302,18 @@ async function initApp() {
 }
 
 // ═══════════════════════════════════════════════════
-// Google Drive API
+// Google Drive API（用固定 ID，不靠名稱搜尋）
 // ═══════════════════════════════════════════════════
-async function driveListFolder(folderName, parentFolderName) {
-  // 先找 parentFolder（如果有指定）的 ID
-  let parentQ = parentFolderName
-    ? `name='${parentFolderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`
-    : null;
 
-  let parentId = 'root';
-  if (parentQ) {
-    const r = await driveQuery(parentQ);
-    if (r.files.length) parentId = r.files[0].id;
-  }
-
-  const q = `name='${folderName}' and mimeType='application/vnd.google-apps.folder' and '${parentId}' in parents and trashed=false`;
-  const r = await driveQuery(q);
-  return r.files.length ? r.files[0].id : null;
-}
-
-async function driveGetFileId(folderName, fileName, parentFolderName) {
-  const cacheKey = `${parentFolderName||''}/${folderName}/${fileName}`;
+// 直接用資料夾 ID 找檔案
+async function driveGetFileInFolder(folderId, fileName) {
+  const cacheKey = `${folderId}/${fileName}`;
   if (fileIdCache[cacheKey]) return fileIdCache[cacheKey];
-
-  const folderId = await driveListFolder(folderName, parentFolderName);
-  if (!folderId) throw new Error(`資料夾 ${folderName} 找不到`);
-
   const q = `name='${fileName}' and '${folderId}' in parents and trashed=false`;
   const r = await driveQuery(q);
   if (!r.files.length) throw new Error(`檔案 ${fileName} 找不到`);
-
   fileIdCache[cacheKey] = r.files[0].id;
   return r.files[0].id;
-}
-
-async function driveGetFileIdInRoot(folderName, fileName) {
-  // kbar.db 在 python/python應用/KBar/ — 直接搜尋不限父層
-  const cacheKey = `any/${folderName}/${fileName}`;
-  if (fileIdCache[cacheKey]) return fileIdCache[cacheKey];
-
-  const foldersR = await driveQuery(
-    `name='${folderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`
-  );
-  if (!foldersR.files.length) throw new Error(`資料夾 ${folderName} 找不到`);
-
-  for (const f of foldersR.files) {
-    const q = `name='${fileName}' and '${f.id}' in parents and trashed=false`;
-    const r = await driveQuery(q);
-    if (r.files.length) {
-      fileIdCache[cacheKey] = r.files[0].id;
-      return r.files[0].id;
-    }
-  }
-  throw new Error(`${folderName}/${fileName} 找不到`);
 }
 
 async function driveQuery(q) {
@@ -371,17 +332,6 @@ async function driveDownload(fileId) {
   return r.arrayBuffer();
 }
 
-async function driveDownloadByPath(folderName, fileName) {
-  const fileId = await driveGetFileIdInRoot(folderName, fileName);
-  return driveDownload(fileId);
-}
-
-async function driveDownloadTextByPath(folderName, fileName) {
-  const fileId = await driveGetFileId(folderName, fileName);
-  const buf = await driveDownload(fileId);
-  return new TextDecoder().decode(buf);
-}
-
 async function driveListFiles(folderId) {
   const q = `'${folderId}' in parents and trashed=false and mimeType!='application/vnd.google-apps.folder'`;
   const r = await driveQuery(q);
@@ -389,21 +339,14 @@ async function driveListFiles(folderId) {
 }
 
 async function loadAllSettings() {
-  // 找 2026_structure 資料夾
-  const structR = await driveQuery(
-    `name='2026_structure' and mimeType='application/vnd.google-apps.folder' and trashed=false`
-  );
-  if (!structR.files.length) throw new Error('找不到 2026_structure 資料夾');
-  const structId = structR.files[0].id;
-
-  // 找 settings 子資料夾
+  // 用固定 ID 找 settings 子資料夾
   const settingsR = await driveQuery(
-    `name='settings' and mimeType='application/vnd.google-apps.folder' and '${structId}' in parents and trashed=false`
+    `name='settings' and mimeType='application/vnd.google-apps.folder' and '${FOLDER_IDS.structure}' in parents and trashed=false`
   );
   if (!settingsR.files.length) throw new Error('找不到 settings 資料夾');
   const settingsFolderId = settingsR.files[0].id;
 
-  // 列出所有 JSON
+  // 列出所有 JSON 並行下載
   const files = await driveListFiles(settingsFolderId);
   const promises = files
     .filter(f => f.name.endsWith('.json') && f.name !== '__recent__.json')
@@ -411,9 +354,7 @@ async function loadAllSettings() {
       const buf = await driveDownload(f.id);
       const text = new TextDecoder().decode(buf);
       const sym = f.name.replace('.json', '');
-      try {
-        settingsAll[sym] = JSON.parse(text);
-      } catch(e) {}
+      try { settingsAll[sym] = JSON.parse(text); } catch(e) {}
     });
   await Promise.all(promises);
 }
