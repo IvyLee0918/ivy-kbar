@@ -357,13 +357,13 @@ async function renderCharts(sym){
       const bkey='g0_d'+div+'_'+zt;
       const beh=sb[bkey]||{};
       const gridLines=buildGridLines(gh,gl,div,layer);
-      const card=buildCard(sym,div,zt,bars,gridLines,beh,String(div)===String(bd));
+      const card=buildCard(sym,div,zt,bars,gridLines,beh,String(div)===String(bd),layer);
       area.appendChild(card);
     }
   }
 }
 
-function buildCard(sym,div,zt,bars,gl,beh,isBest){
+function buildCard(sym,div,zt,bars,gl,beh,isBest,_layer){
   const el=document.createElement('div');el.className='chart-card';
   const dir=beh.zone_direction||'';
   const ds=dir==='up'?'▲':dir==='down'?'▼':'';
@@ -372,14 +372,14 @@ function buildCard(sym,div,zt,bars,gl,beh,isBest){
   setTimeout(()=>{
     const canvas=el.querySelector('canvas');
     if(!canvas)return;
-    const chart=buildChart(canvas,bars,gl,beh);
+    const chart=buildChart(canvas,bars,gl,beh,_layer);
     chartInst.push(chart);
     setTimeout(()=>fillAxis(el,chart,gl,beh),100);
   },0);
   return el;
 }
 
-function buildChart(canvas,bars,gridLines,beh){
+function buildChart(canvas,bars,gridLines,beh,layer){
   const ctx=canvas.getContext('2d');
   const allH=Math.max(...bars.map(b=>b.high)),allL=Math.min(...bars.map(b=>b.low));
   const pad=(allH-allL)*0.08;
@@ -425,16 +425,26 @@ function buildChart(canvas,bars,gridLines,beh){
     // current_line 黑色虛線，靠左標籤：「L7 80.6 (81.2 80)」
     const caDn=beh.current_approx_dn,caUp=beh.current_approx_up,cl=beh.current_line;
     if(cl&&caDn!=null&&caUp!=null){
-      // 從 gridLines 找最接近 approx_dn 的格線實際值，以實際值定位
+      // 從完整 layer 精確反查 current_approx_dn 對應的格線 value
+      // layer 是 Python 算的原始結構，approx_dn 比對最精確
       let clActual=null;
-      let bestDiff=Infinity;
-      gridLines.forEach(g=>{
-        // approx_dn < value < approx_up，格線實際值在近似值之間
-        // 找最接近 (caUp+caDn)/2 的格線 price
+      if(layer&&layer.length){
+        let bestDiff=Infinity;
+        layer.forEach(item=>{
+          if(item.approx_dn==null)return;
+          const diff=Math.abs(item.approx_dn-parseFloat(caDn));
+          if(diff<bestDiff){bestDiff=diff;clActual=item.value;}
+        });
+      }
+      // fallback：從 gridLines 找最近的
+      if(clActual==null){
+        let bestDiff=Infinity;
         const mid=(parseFloat(caUp)+parseFloat(caDn))/2;
-        const diff=Math.abs(g.price-mid);
-        if(diff<bestDiff){bestDiff=diff;clActual=g.price;}
-      });
+        gridLines.forEach(g=>{
+          const diff=Math.abs(g.price-mid);
+          if(diff<bestDiff){bestDiff=diff;clActual=g.price;}
+        });
+      }
       const clPrice=clActual!=null?clActual:(parseFloat(caDn)+parseFloat(caUp))/2;
       const py=y.getPixelForValue(clPrice);
       if(py>=chartArea.top&&py<=chartArea.bottom){
@@ -496,12 +506,23 @@ function fillAxis(cardEl,chart,gridLines,beh){
   const pr=Math.max(...gridLines.map(g=>g.price))-Math.min(...gridLines.map(g=>g.price));
   const half=Math.min(...gridLines.map(g=>g.price))+pr/2,tol=pr*0.001;
 
-  // 顯示所有在可視範圍內的格線實際值（純數字，不加目標近似值）
+  // 顯示所有在可視範圍內的格線實際值
   gridLines.forEach(g=>{
     if(g.price<minY||g.price>maxY)return;
     const isH=Math.abs(g.price-half)<tol;
     const isSolid=Array.isArray(g.dash)&&g.dash.length===0;
-    ticks.push({price:g.price,cls:'tick'+(isH?' half':isSolid?' edge':'')});
+    ticks.push({price:g.price,cls:'tick'+(isH?' half':isSolid?' edge':''),src:'grid'});
+  });
+  // 額外加入 behavior_state 的實際值（確保與虛線對齊）
+  const behPrices=[
+    {v:beh.next_up_value, cls:'tick'},
+    {v:beh.next_dn_value, cls:'tick'},
+  ];
+  behPrices.forEach(({v,cls})=>{
+    if(v==null)return;
+    const p=parseFloat(v);
+    if(p<minY||p>maxY)return;
+    ticks.push({price:p,cls,src:'beh'});
   });
 
   // 去重（以 toFixed(2) 為 key）、排序高→低
