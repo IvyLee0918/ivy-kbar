@@ -6,6 +6,7 @@
 <title>Ivy 盤態</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.2/sql-wasm.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 :root {
   --bg:#fff; --surface:#f5f6f8; --border:#d0d5de;
@@ -45,7 +46,7 @@ body{background:var(--bg);color:var(--text);font-family:'Helvetica Neue',sans-se
 .chart-body{display:flex;height:340px;background:#fff;}
 .chart-inner{position:relative;flex:1;min-width:0;}
 .chart-inner canvas{width:100%!important;height:100%!important;}
-.price-axis{width:52px;flex-shrink:0;position:relative;background:#f8f9fc;border-left:1px solid #dde;overflow:hidden;}
+.price-axis{width:52px;flex-shrink:0;position:relative;background:#f8f9fc;border-left:1px solid #dde;overflow:hidden;align-self:stretch;}
 .price-axis .tick{position:absolute;left:3px;right:3px;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#333;font-family:monospace;transform:translateY(-50%);line-height:1;}
 .price-axis .tick.half{color:#c62828;font-weight:700;}
 .price-axis .tick.edge{color:#1565c0;font-weight:600;}
@@ -118,6 +119,31 @@ async function initApp(){
   }catch(e){hideLoading();setStatus('初始化失敗: '+e.message,true);console.error(e);}
 }
 
+// 股票名稱對照表
+let stockNames={};
+
+async function loadStockNames(){
+  try{
+    // stock_id.xlsx 在 KBar 資料夾
+    const fid=await getFileId(FOLDER_IDS.kbar,'stock_id.xlsx');
+    const buf=await driveDownload(fid);
+    // 用 SheetJS 解析 xlsx
+    const wb=XLSX.read(new Uint8Array(buf),{type:'array'});
+    const ws=wb.Sheets[wb.SheetNames[0]];
+    const rows=XLSX.utils.sheet_to_json(ws,{header:1});
+    // 假設第一欄是股票代號，第二欄是公司名稱
+    rows.forEach(row=>{
+      if(!row[0])return;
+      const sym=String(row[0]).trim();
+      const name=String(row[1]||'').trim();
+      if(sym&&name)stockNames[sym]=name;
+    });
+    console.log('股票名稱載入完成，共',Object.keys(stockNames).length,'筆');
+  }catch(e){
+    console.warn('stock_id.xlsx 載入失敗:',e.message);
+  }
+}
+
 async function loadSettings(){
   const r=await driveQuery("name='settings' and mimeType='application/vnd.google-apps.folder' and '"+FOLDER_IDS.structure+"' in parents and trashed=false");
   if(!r.files.length)throw new Error('找不到 settings 資料夾');
@@ -135,8 +161,10 @@ function populateSel(){
   Object.keys(settingsAll).sort().forEach(sym=>{
     const beh=behaviorState[sym]||{};
     const bd=(beh._meta||{}).best_div||'';
+    const name=stockNames[sym]||'';
     const o=document.createElement('option');
-    o.value=sym;o.textContent=sym+(bd?' ('+bd+'等份)':'');
+    o.value=sym;
+    o.textContent=sym+(name?' '+name:'')+(bd?' ('+bd+'等份)':'');
     sel.appendChild(o);
   });
 }
@@ -498,45 +526,47 @@ function buildChart(canvas,bars,gridLines,beh,layer){
 
 function fillAxis(cardEl,chart,gridLines,beh){
   const ax=cardEl.querySelector('.price-axis');
-  if(!ax||!chart||!chart.scales||!chart.scales.y)return;
+  if(!ax||!chart||!chart.scales||!chart.scales.y||!chart.chartArea)return;
   const ys=chart.scales.y,minY=ys.min,maxY=ys.max,range=maxY-minY;
   if(!range)return;
-  const axH=ax.getBoundingClientRect().height||340;
+
+  // 關鍵：用 Chart.js chartArea 的實際繪圖區域對齊
+  // chartArea.top = Canvas 內繪圖區頂端（px），chartArea.height = 繪圖區高度
+  // price-axis 的 top 偏移 = chartArea.top + (price 比例 * chartArea.height)
+  const ca=chart.chartArea;
+  const canvasH=chart.canvas.offsetHeight||340;
+  const areaTop=ca.top;       // 繪圖區頂端距 canvas 頂端的 px
+  const areaH=ca.height;      // 繪圖區實際高度
+
   const ticks=[];const seen=new Set();
   const pr=Math.max(...gridLines.map(g=>g.price))-Math.min(...gridLines.map(g=>g.price));
   const half=Math.min(...gridLines.map(g=>g.price))+pr/2,tol=pr*0.001;
 
-  // 顯示所有在可視範圍內的格線實際值
   gridLines.forEach(g=>{
     if(g.price<minY||g.price>maxY)return;
     const isH=Math.abs(g.price-half)<tol;
     const isSolid=Array.isArray(g.dash)&&g.dash.length===0;
-    ticks.push({price:g.price,cls:'tick'+(isH?' half':isSolid?' edge':''),src:'grid'});
+    ticks.push({price:g.price,cls:'tick'+(isH?' half':isSolid?' edge':'')});
   });
-  // 額外加入 behavior_state 的實際值（確保與虛線對齊）
-  const behPrices=[
-    {v:beh.next_up_value, cls:'tick'},
-    {v:beh.next_dn_value, cls:'tick'},
-  ];
-  behPrices.forEach(({v,cls})=>{
+  // behavior_state 實際值也加入
+  [beh.next_up_value,beh.next_dn_value].forEach(v=>{
     if(v==null)return;
     const p=parseFloat(v);
-    if(p<minY||p>maxY)return;
-    ticks.push({price:p,cls,src:'beh'});
+    if(p>=minY&&p<=maxY)ticks.push({price:p,cls:'tick'});
   });
 
-  // 去重（以 toFixed(2) 為 key）、排序高→低
   const sorted=ticks.filter(t=>{
     const k=parseFloat(t.price).toFixed(2);
     if(seen.has(k))return false;seen.add(k);return true;
   }).sort((a,b)=>b.price-a.price);
 
   ax.innerHTML='';
-  // 全部顯示，不跳過任何格線（字型 10px，間距由格線密度決定）
   sorted.forEach(t=>{
-    const pct=(maxY-t.price)/range,top=pct*axH;
+    // 用和 Chart.js gridPlugin 完全相同的公式計算 Y 位置
+    const pct=(maxY-t.price)/range;
+    const topInCanvas=areaTop+pct*areaH;  // 在 canvas 內的 px 位置
     const d=document.createElement('div');d.className=t.cls;
-    d.style.top=top+'px';
+    d.style.top=topInCanvas+'px';          // price-axis 和 canvas 等高，位置直接對應
     d.textContent=parseFloat(t.price).toFixed(1);
     ax.appendChild(d);
   });
