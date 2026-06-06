@@ -119,8 +119,8 @@
   .th-s { color: #1565c0; }
   .beh-curr-label { color: var(--muted); font-size: 13px; }
   .beh-curr-line  { color: #1565c0; font-weight: 700; font-size: 15px; }
-  .beh-up   { background: #f9a825; color: #000; border-radius: 3px; padding: 1px 5px; font-weight: 700; }
-  .beh-dn   { background: #43a047; color: #fff; border-radius: 3px; padding: 1px 5px; font-weight: 700; }
+  .beh-up   { color: #000; font-weight: 700; }
+  .beh-dn   { color: #1b5e20; font-weight: 700; }
   .beh-last { background: #eeeeee; color: #555; border-radius: 3px; padding: 1px 5px; font-size: 13px; }
   .beh-price { color: #e65100; font-size: 13px; margin-left: 3px; }
   .zone-t { color: #c62828; font-weight: 700; }
@@ -154,13 +154,11 @@
   }
   canvas { width: 100% !important; height: 100% !important; }
   .price-axis {
-    width: 46px; flex-shrink: 0;
-    display: flex; flex-direction: column; justify-content: space-between;
-    padding: 4px 4px 4px 2px;
+    width: 44px; flex-shrink: 0;
+    position: relative;
     background: #f8f9fc;
     border-left: 1px solid #dde;
     font-size: 11px; color: #333;
-    text-align: right; font-family: monospace;
     overflow: hidden;
   }
   .price-tick { white-space: nowrap; line-height: 1.2; }
@@ -240,7 +238,6 @@
   </div>
   <div id="tf-tabs">
     <button class="tf-tab active" onclick="switchTF('1D','日K')">日K</button>
-    <button class="tf-tab" onclick="switchTF('1min','1分K')">1分K</button>
     <button class="tf-tab" onclick="switchTF('5min','5分K')">5分K</button>
     <button class="tf-tab" onclick="switchTF('30min','30分K')">30分K</button>
   </div>
@@ -444,7 +441,7 @@ async function loadSymbol() {
 function switchTF(tf, label) {
   currentTF = tf;
   document.querySelectorAll('.tf-tab').forEach((t,i) => {
-    t.classList.toggle('active', ['1D','1min','5min','30min'][i] === tf);
+    t.classList.toggle('active', ['1D','5min','30min'][i] === tf);
   });
   if (currentSymbol) renderAll();
 }
@@ -604,11 +601,22 @@ function queryBars(sym, tf) {
       const raw = res[0].values.map(r => ({
         ts: r[0], open: r[1], high: r[2], low: r[3], close: r[4], volume: r[5]
       }));
-      return resample30min(raw).slice(-120);
+      return resampleNmin(raw, 30).slice(-120);
+    }
+    if (tf === '5min') {
+      const res = sqlDb.exec(
+        `SELECT ts, Open, High, Low, Close, Volume FROM kbar_1min
+         WHERE symbol=? ORDER BY ts ASC`,
+        [sym]
+      );
+      if (!res.length) return [];
+      const raw = res[0].values.map(r => ({
+        ts: r[0], open: r[1], high: r[2], low: r[3], close: r[4], volume: r[5]
+      }));
+      return resampleNmin(raw, 5).slice(-160);
     }
     const table = tf === '1D' ? 'kbar_daily' : 'kbar_1min';
     const limit  = tf === '1D' ? 120 : 240;
-    const col    = tf === '1D' ? 'Open,High,Low,Close,Volume' : 'Open,High,Low,Close,Volume';
     const res = sqlDb.exec(
       `SELECT ts, Open, High, Low, Close, Volume FROM ${table}
        WHERE symbol=? ORDER BY ts DESC LIMIT ${limit}`,
@@ -621,17 +629,18 @@ function queryBars(sym, tf) {
   } catch(e) { console.error(e); return []; }
 }
 
-// 30分K resample（closed=right, label=right，台股標準）
-function resample30min(bars) {
+// N分K resample（closed=right, label=right，台股標準）
+// 例：5分K → 09:05 涵蓋 09:01~09:05
+function resampleNmin(bars, n) {
   const buckets = {};
   bars.forEach(b => {
     const d = new Date(b.ts);
-    // 對齊到右邊界：分鐘進位到下一個30分
     const mins = d.getMinutes();
-    const roundedMins = Math.ceil((mins + 1) / 30) * 30;
+    // 右閉：ceil 到下一個 n 的倍數
+    const roundedMins = Math.ceil((mins + 1) / n) * n;
     const aligned = new Date(d);
     if (roundedMins >= 60) {
-      aligned.setMinutes(0);
+      aligned.setMinutes(roundedMins - 60);
       aligned.setHours(d.getHours() + 1);
     } else {
       aligned.setMinutes(roundedMins);
