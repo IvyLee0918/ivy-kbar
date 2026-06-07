@@ -1,0 +1,16 @@
+{
+  "name": "Ivy 盤態分析",
+  "short_name": "Ivy 盤態",
+  "start_url": "./ivy_kbar_viewer.html",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#1565c0",
+  "icons": [
+    {
+      "src": "icon.jpg",
+      "sizes": "512x512",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    }
+  ]
+}
